@@ -1,0 +1,15 @@
+{
+	"geode": "4.0.1",
+	"gd": {
+		"win": "2.2074",
+		"android": "2.2074",
+		"mac": "2.2074",
+		"ios": "2.2074"
+	},
+	"id": "karim.karim-bot",
+	"name": "Karim Bot",
+	"version": "v1.0.0",
+	"developer": "Karim",
+	"description": "Bot level sederhana: rekam klik di practice mode, simpan sebagai macro, lalu load dan putar ulang.",
+	"tags": ["utility", "gameplay"]
+}
