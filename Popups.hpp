@@ -7,11 +7,13 @@
 // ============================================================
 // Popup untuk memberi nama & menyimpan macro setelah rekaman
 // ============================================================
-class SaveMacroPopup : public geode::Popup<> {
+class SaveMacroPopup : public geode::Popup {
 protected:
     TextInput* m_input = nullptr;
 
-    bool setup() override {
+    bool init() {
+        if (!Popup::init(300.f, 150.f)) return false;
+
         this->setTitle("Simpan Macro");
 
         m_input = TextInput::create(220.f, "Nama macro", "bigFont.fnt");
@@ -24,7 +26,7 @@ protected:
         auto btn = CCMenuItemExt::createSpriteExtra(
             ButtonSprite::create("Simpan"),
             [this](CCObject*) {
-                auto name = m_input->getString();
+                std::string name = m_input->getString();
                 if (name.empty()) name = "macro";
                 if (MacroManager::get().save(name)) {
                     Notification::create("Macro disimpan: " + MacroManager::get().loadedName,
@@ -43,11 +45,11 @@ protected:
 public:
     static SaveMacroPopup* create() {
         auto ret = new SaveMacroPopup();
-        if (ret && ret->initAnd(300.f, 150.f)) {
+        if (ret->init()) {
             ret->autorelease();
             return ret;
         }
-        CC_SAFE_DELETE(ret);
+        delete ret;
         return nullptr;
     }
 };
@@ -55,11 +57,13 @@ public:
 // ============================================================
 // Popup daftar macro tersimpan: Load & Hapus
 // ============================================================
-class MacroListPopup : public geode::Popup<> {
+class MacroListPopup : public geode::Popup {
 protected:
     ScrollLayer* m_scroll = nullptr;
 
-    bool setup() override {
+    bool init() {
+        if (!Popup::init(300.f, 210.f)) return false;
+
         this->setTitle("Macro Tersimpan");
         this->refresh();
         return true;
@@ -70,6 +74,7 @@ protected:
             m_scroll->removeFromParent();
             m_scroll = nullptr;
         }
+        if (auto old = m_mainLayer->getChildByTag(9001)) old->removeFromParent();
 
         auto names = MacroManager::get().list();
         const float w = 260.f, h = 150.f, rowH = 34.f;
@@ -79,21 +84,19 @@ protected:
             empty->setScale(0.4f);
             empty->setPosition({m_size.width / 2, m_size.height / 2});
             empty->setTag(9001);
-            if (auto old = m_mainLayer->getChildByTag(9001)) old->removeFromParent();
             m_mainLayer->addChild(empty);
             return;
         }
-        if (auto old = m_mainLayer->getChildByTag(9001)) old->removeFromParent();
 
-        m_scroll = ScrollLayer::create({w, h});
+        m_scroll = ScrollLayer::create(CCSize{w, h});
         m_scroll->setPosition({(m_size.width - w) / 2, 25.f});
 
-        float total = std::max(h, rowH * names.size());
+        float total = std::max(h, rowH * static_cast<float>(names.size()));
         m_scroll->m_contentLayer->setContentSize({w, total});
 
         for (size_t i = 0; i < names.size(); i++) {
-            auto name = names[i];
-            float y = total - rowH * (i + 1);
+            std::string name = names[i];
+            float y = total - rowH * static_cast<float>(i + 1);
 
             auto row = CCNode::create();
             row->setPosition({0, y});
@@ -144,11 +147,11 @@ protected:
 public:
     static MacroListPopup* create() {
         auto ret = new MacroListPopup();
-        if (ret && ret->initAnd(300.f, 210.f)) {
+        if (ret->init()) {
             ret->autorelease();
             return ret;
         }
-        CC_SAFE_DELETE(ret);
+        delete ret;
         return nullptr;
     }
 };

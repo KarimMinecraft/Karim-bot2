@@ -19,26 +19,27 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
 
         // Saat rekam, simpan setiap klik beserta nomor frame-nya
         if (m.state == MacroManager::State::Recording && !m.injecting && PlayLayer::get()) {
-            m.clicks.push_back({m_gameState.m_currentProgress, button, down, isPlayer1});
+            int frame = static_cast<int>(m_gameState.m_currentProgress);
+            m.clicks.push_back(Click{frame, button, down, isPlayer1});
         }
 
         GJBaseGameLayer::handleButton(down, button, isPlayer1);
     }
 
-    void processCommands(float dt) {
+    void processCommands(float dt, bool isHalfTick, bool isLastTick) {
         auto& m = MacroManager::get();
 
         if (m.state == MacroManager::State::Playing && PlayLayer::get()) {
-            int frame = m_gameState.m_currentProgress;
+            int frame = static_cast<int>(m_gameState.m_currentProgress);
             m.injecting = true;
             while (m.index < m.clicks.size() && m.clicks[m.index].frame <= frame) {
-                auto const& c = m.clicks[m.index++];
+                auto const c = m.clicks[m.index++];
                 GJBaseGameLayer::handleButton(c.down, c.button, c.p1);
             }
             m.injecting = false;
         }
 
-        GJBaseGameLayer::processCommands(dt);
+        GJBaseGameLayer::processCommands(dt, isHalfTick, isLastTick);
     }
 };
 
@@ -50,7 +51,7 @@ class $modify(KBPlayLayer, PlayLayer) {
         PlayLayer::resetLevel();
 
         auto& m = MacroManager::get();
-        int frame = m_gameState.m_currentProgress;
+        int frame = static_cast<int>(m_gameState.m_currentProgress);
 
         if (m.state == MacroManager::State::Recording) {
             // Mati -> balik ke checkpoint: buang klik setelah checkpoint, lanjut rekam dari situ
@@ -151,7 +152,7 @@ class $modify(KBPauseLayer, PauseLayer) {
         playBtn->setPosition({x, y - 38.f});
         menu->addChild(playBtn);
 
-        // --- Tombol Macros (tempat penyimpanan + Load) ---
+        // --- Tombol Load (tempat penyimpanan macro) ---
         auto macroBtn = CCMenuItemExt::createSpriteExtra(
             ButtonSprite::create("Load", "goldFont.fnt", "GJ_button_04.png", 0.7f),
             [](CCObject*) {
