@@ -177,9 +177,8 @@ class $modify(KBPauseLayer, PauseLayer) {
         auto panel = KBPanel::create(this);
         if (!panel) return;
 
-        auto win = CCDirector::get()->getWinSize();
         float x = 14.f;
-        float y = (win.height - panel->getContentSize().height) / 2.f;
+        float y = 52.f;
         panel->setPosition({x - 40.f, y});
         this->addChild(panel, 100);
 
