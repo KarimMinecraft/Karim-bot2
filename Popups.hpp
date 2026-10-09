@@ -4,6 +4,38 @@
 #include <Geode/ui/Notification.hpp>
 #include <Geode/ui/NineSlice.hpp>
 
+namespace kbui {
+
+    // Tombol buatan sendiri: ukuran & teks selalu seimbang (teks otomatis diperkecil kalau kepanjangan).
+    // bg: "GJ_button_01.png" (hijau), "GJ_button_02.png" (biru), "GJ_button_06.png" (merah), dst.
+    inline CCNode* buttonNode(char const* text, float w, float h, char const* bg, float textScale = 0.55f) {
+        auto node = CCNode::create();
+        node->setContentSize({w, h});
+
+        auto spr = NineSlice::create(bg, CCRect{0.f, 0.f, 40.f, 40.f}, NineSlice::Insets{12.f, 12.f, 12.f, 12.f});
+        if (spr) {
+            spr->setContentSize({w, h});
+            spr->setPosition({w / 2, h / 2});
+            node->addChild(spr, 0);
+        }
+
+        auto label = CCLabelBMFont::create(text, "goldFont.fnt");
+        label->limitLabelWidth(w - 16.f, textScale, 0.2f);
+        label->setPosition({w / 2, h / 2 + 1.f});
+        node->addChild(label, 1);
+        return node;
+    }
+
+    // Pil/kapsul gelap untuk label status
+    inline NineSlice* pill(float w, float h, ccColor3B color, GLubyte opacity) {
+        auto bg = NineSlice::create("square02_001.png");
+        bg->setContentSize({w, h});
+        bg->setColor(color);
+        bg->setOpacity(opacity);
+        return bg;
+    }
+}
+
 // ============================================================
 // Popup daftar macro tersimpan: Load & Hapus
 // Nama macro = nama level (hasil autosave)
@@ -13,9 +45,9 @@ protected:
     ScrollLayer* m_scroll = nullptr;
 
     bool init() {
-        if (!Popup::init(340.f, 230.f)) return false;
+        if (!Popup::init(350.f, 232.f)) return false;
 
-        this->setTitle("Karim Bot - Macro Tersimpan");
+        this->setTitle("Macro Tersimpan");
         this->refresh();
         return true;
     }
@@ -28,7 +60,7 @@ protected:
         if (auto old = m_mainLayer->getChildByTag(9001)) old->removeFromParent();
 
         auto names = MacroManager::get().list();
-        const float w = 300.f, h = 160.f, rowH = 38.f;
+        const float w = 310.f, h = 164.f, rowH = 44.f;
 
         if (names.empty()) {
             auto empty = CCLabelBMFont::create("Belum ada macro.\nTekan Record lalu main sampai selesai,\nmacro otomatis tersimpan di sini.", "bigFont.fnt");
@@ -54,33 +86,33 @@ protected:
             row->setPosition({0, y});
             row->setContentSize({w, rowH});
 
-            // latar baris (gelap, agak transparan)
-            auto bg = NineSlice::create("square02_001.png");
-            bg->setContentSize({w - 6.f, rowH - 5.f});
-            bg->setColor({0, 0, 0});
-            bg->setOpacity(120);
+            // latar baris
+            auto bg = kbui::pill(w - 6.f, rowH - 6.f, {0, 0, 0}, 120);
             bg->setPosition({w / 2, rowH / 2});
             row->addChild(bg);
 
+            // nama macro + jumlah klik (rata kiri, dua baris)
             auto label = CCLabelBMFont::create(name.c_str(), "bigFont.fnt");
             label->limitLabelWidth(150.f, 0.5f, 0.2f);
             label->setAnchorPoint({0.f, 0.5f});
-            label->setPosition({14.f, rowH / 2 + 6.f});
+            label->setPosition({16.f, rowH / 2 + 7.f});
             row->addChild(label);
 
             auto info = CCLabelBMFont::create((std::to_string(clicks) + " klik").c_str(), "chatFont.fnt");
-            info->setScale(0.6f);
+            info->setScale(0.62f);
             info->setColor({150, 200, 255});
             info->setAnchorPoint({0.f, 0.5f});
-            info->setPosition({14.f, rowH / 2 - 9.f});
+            info->setPosition({16.f, rowH / 2 - 9.f});
             row->addChild(info);
 
+            // dua tombol: ukuran SAMA, tinggi SAMA, sejajar di tengah baris
+            const float bw = 62.f, bh = 28.f;
             auto menu = CCMenu::create();
             menu->setPosition({0, 0});
             menu->setContentSize({w, rowH});
 
             auto loadBtn = CCMenuItemExt::createSpriteExtra(
-                ButtonSprite::create("Load", 60, true, "goldFont.fnt", "GJ_button_01.png", 24.f, 0.6f),
+                kbui::buttonNode("Load", bw, bh, "GJ_button_01.png", 0.55f),
                 [this, name](CCObject*) {
                     if (MacroManager::get().load(name)) {
                         Notification::create("Macro dimuat: " + name, NotificationIcon::Success)->show();
@@ -90,17 +122,17 @@ protected:
                     }
                 }
             );
-            loadBtn->setPosition({w - 78.f, rowH / 2});
+            loadBtn->setPosition({w - 16.f - bw * 1.5f - 6.f, rowH / 2});
             menu->addChild(loadBtn);
 
             auto delBtn = CCMenuItemExt::createSpriteExtra(
-                ButtonSprite::create("Hapus", 52, true, "goldFont.fnt", "GJ_button_06.png", 24.f, 0.6f),
+                kbui::buttonNode("Hapus", bw, bh, "GJ_button_06.png", 0.55f),
                 [this, name](CCObject*) {
                     MacroManager::get().remove(name);
                     this->refresh();
                 }
             );
-            delBtn->setPosition({w - 28.f, rowH / 2});
+            delBtn->setPosition({w - 16.f - bw * 0.5f, rowH / 2});
             menu->addChild(delBtn);
 
             row->addChild(menu);

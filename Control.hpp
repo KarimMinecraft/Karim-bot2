@@ -5,124 +5,100 @@
 #include <Geode/ui/Notification.hpp>
 
 // ============================================================
-// Tombol kecil Karim Bot di layar level.
-// Ditekan -> muncul panel: Record, Play, Load, dan Safe Mode.
+// Panel Karot Utils di dalam PAUSE MENU (sisi kiri layar)
+// Isi: status, Record, Play, Load, dan Safe Mode
 // ============================================================
-class KBControl : public CCNode {
+class KBPanel : public CCNode {
 protected:
-    static constexpr float PW = 150.f;   // lebar panel
-    static constexpr float PH = 186.f;   // tinggi panel
+    static constexpr float PW = 132.f;   // lebar panel
+    static constexpr float PH = 216.f;   // tinggi panel
 
-    CCNode* m_panel = nullptr;
-    CCMenu* m_menu = nullptr;
-    CCLabelBMFont* m_status = nullptr;
-    CCLabelBMFont* m_info = nullptr;
-    CCLabelBMFont* m_chip = nullptr;
-    bool m_open = false;
-    int m_sig = -1;
+    PauseLayer* m_pause = nullptr;
 
-    bool init() override {
+    bool setup(PauseLayer* pause) {
         if (!CCNode::init()) return false;
+        m_pause = pause;
 
-        // ---- tombol kecil (selalu terlihat) ----
-        auto toggleMenu = CCMenu::create();
-        toggleMenu->setPosition({0, 0});
-        auto kb = CCMenuItemExt::createSpriteExtra(
-            ButtonSprite::create("KB", 34, true, "goldFont.fnt", "GJ_button_01.png", 24.f, 0.6f),
-            [this](CCObject*) { this->togglePanel(); }
-        );
-        toggleMenu->addChild(kb);
-        this->addChild(toggleMenu, 2);
-
-        // ---- chip status kecil di bawah tombol (REC / PLAY) ----
-        m_chip = CCLabelBMFont::create("", "bigFont.fnt");
-        m_chip->setScale(0.35f);
-        m_chip->setPosition({0.f, -20.f});
-        this->addChild(m_chip, 2);
-
-        // ---- panel ----
-        m_panel = CCNode::create();
-        m_panel->ignoreAnchorPointForPosition(false);
-        m_panel->setContentSize({PW, PH});
-        m_panel->setAnchorPoint({0.f, 1.f});
-        m_panel->setPosition({24.f, 14.f});
-        m_panel->setVisible(false);
-        m_panel->setScale(0.01f);
-        this->addChild(m_panel, 1);
-
-        auto bg = NineSlice::create("square02_001.png");
-        bg->setContentSize({PW, PH});
-        bg->setColor({10, 12, 28});
-        bg->setOpacity(215);
-        bg->setPosition({PW / 2, PH / 2});
-        m_panel->addChild(bg, 0);
-
-        // garis aksen tipis di bawah judul
-        auto line = CCLayerColor::create({90, 160, 255, 160}, PW - 36.f, 1.5f);
-        line->setPosition({18.f, PH - 33.f});
-        m_panel->addChild(line, 1);
-
-        auto title = CCLabelBMFont::create("Karim Bot", "goldFont.fnt");
-        title->setScale(0.55f);
-        title->setPosition({PW / 2, PH - 16.f});
-        m_panel->addChild(title, 1);
-
-        m_status = CCLabelBMFont::create("Idle", "bigFont.fnt");
-        m_status->setScale(0.36f);
-        m_status->setPosition({PW / 2, PH - 47.f});
-        m_panel->addChild(m_status, 1);
-
-        m_info = CCLabelBMFont::create("", "chatFont.fnt");
-        m_info->setScale(0.6f);
-        m_info->setColor({160, 175, 210});
-        m_info->setPosition({PW / 2, PH - 62.f});
-        m_panel->addChild(m_info, 1);
-
-        this->rebuild();
-        this->schedule(schedule_selector(KBControl::tick), 0.15f);
-        return true;
-    }
-
-    // Susun ulang isi menu (tombol berubah sesuai status: Record <-> Stop, Play <-> Stop)
-    void rebuild() {
-        if (m_menu) {
-            m_menu->removeFromParent();
-            m_menu = nullptr;
-        }
         auto& m = MacroManager::get();
         bool rec = m.state == MacroManager::State::Recording;
         bool play = m.state == MacroManager::State::Playing;
 
-        m_menu = CCMenu::create();
-        m_menu->setPosition({0, 0});
-        m_menu->setContentSize({PW, PH});
-        m_panel->addChild(m_menu, 5);
+        this->setContentSize({PW, PH});
+
+        // ---- latar panel ----
+        auto bg = NineSlice::create("square02_001.png");
+        bg->setContentSize({PW, PH});
+        bg->setColor({14, 18, 40});
+        bg->setOpacity(235);
+        bg->setPosition({PW / 2, PH / 2});
+        this->addChild(bg, 0);
+
+        // ---- judul + garis aksen emas ----
+        auto title = CCLabelBMFont::create("Karot Utils", "goldFont.fnt");
+        title->limitLabelWidth(PW - 20.f, 0.6f, 0.3f);
+        title->setPosition({PW / 2, PH - 18.f});
+        this->addChild(title, 2);
+
+        auto line = CCLayerColor::create({255, 205, 90, 170}, PW - 28.f, 1.5f);
+        line->setPosition({14.f, PH - 33.f});
+        this->addChild(line, 2);
+
+        // ---- pil status (warna berubah sesuai status) ----
+        ccColor3B pillColor = rec ? ccColor3B{150, 30, 40} : play ? ccColor3B{25, 120, 55} : ccColor3B{55, 60, 90};
+        auto pill = kbui::pill(PW - 26.f, 19.f, pillColor, 230);
+        pill->setPosition({PW / 2, PH - 51.f});
+        this->addChild(pill, 1);
+
+        std::string statusText = rec ? "REC  " + std::to_string(m.liveClickCount()) + " klik"
+                                : play ? "PLAY"
+                                : "IDLE";
+        auto status = CCLabelBMFont::create(statusText.c_str(), "bigFont.fnt");
+        status->limitLabelWidth(PW - 36.f, 0.34f, 0.2f);
+        status->setPosition({PW / 2, PH - 51.f});
+        this->addChild(status, 2);
+
+        // ---- nama macro / level ----
+        std::string infoText = rec ? m.levelName : (m.loadedName.empty() ? "belum ada macro" : m.loadedName);
+        auto info = CCLabelBMFont::create(infoText.c_str(), "chatFont.fnt");
+        info->limitLabelWidth(PW - 24.f, 0.6f, 0.3f);
+        info->setColor({165, 178, 215});
+        info->setPosition({PW / 2, PH - 70.f});
+        this->addChild(info, 2);
+
+        // ---- tombol (semua ukuran sama, rapi ditengah) ----
+        const float bw = 108.f, bh = 28.f;
+        auto menu = CCMenu::create();
+        menu->setPosition({0, 0});
+        menu->setContentSize({PW, PH});
+        this->addChild(menu, 5);
 
         auto recBtn = CCMenuItemExt::createSpriteExtra(
-            ButtonSprite::create(rec ? "Stop" : "Record", 108, true, "goldFont.fnt",
-                                 rec ? "GJ_button_04.png" : "GJ_button_06.png", 26.f, 0.7f),
+            kbui::buttonNode(rec ? "Stop" : "Record", bw, bh, rec ? "GJ_button_04.png" : "GJ_button_06.png", 0.62f),
             [this](CCObject*) { this->onRecord(); }
         );
-        recBtn->setPosition({PW / 2, 106.f});
-        m_menu->addChild(recBtn);
+        recBtn->setPosition({PW / 2, 126.f});
+        menu->addChild(recBtn);
 
         auto playBtn = CCMenuItemExt::createSpriteExtra(
-            ButtonSprite::create(play ? "Stop" : "Play", 108, true, "goldFont.fnt",
-                                 play ? "GJ_button_04.png" : "GJ_button_01.png", 26.f, 0.7f),
+            kbui::buttonNode(play ? "Stop" : "Play", bw, bh, play ? "GJ_button_04.png" : "GJ_button_01.png", 0.62f),
             [this](CCObject*) { this->onPlay(); }
         );
-        playBtn->setPosition({PW / 2, 74.f});
-        m_menu->addChild(playBtn);
+        playBtn->setPosition({PW / 2, 92.f});
+        menu->addChild(playBtn);
 
         auto loadBtn = CCMenuItemExt::createSpriteExtra(
-            ButtonSprite::create("Load", 108, true, "goldFont.fnt", "GJ_button_02.png", 26.f, 0.7f),
+            kbui::buttonNode("Load", bw, bh, "GJ_button_02.png", 0.62f),
             [](CCObject*) { MacroListPopup::create()->show(); }
         );
-        loadBtn->setPosition({PW / 2, 42.f});
-        m_menu->addChild(loadBtn);
+        loadBtn->setPosition({PW / 2, 58.f});
+        menu->addChild(loadBtn);
 
-        // ---- Safe Mode ----
-        auto safe = CCMenuItemExt::createTogglerWithStandardSprites(0.5f, [](CCMenuItemToggler* t) {
+        // ---- pemisah + Safe Mode ----
+        auto sep = CCLayerColor::create({255, 255, 255, 45}, PW - 28.f, 1.f);
+        sep->setPosition({14.f, 38.f});
+        this->addChild(sep, 2);
+
+        auto safe = CCMenuItemExt::createTogglerWithStandardSprites(0.55f, [](CCMenuItemToggler* t) {
             bool on = !t->isToggled();   // callback jalan sebelum state berubah
             MacroManager::setSafe(on);
             if (on) {
@@ -132,83 +108,16 @@ protected:
             }
         });
         safe->toggle(MacroManager::safe());
-        safe->setPosition({24.f, 15.f});
-        m_menu->addChild(safe);
+        safe->setPosition({26.f, 19.f});
+        menu->addChild(safe);
 
         auto safeLabel = CCLabelBMFont::create("Safe Mode", "bigFont.fnt");
-        safeLabel->setScale(0.34f);
+        safeLabel->limitLabelWidth(PW - 56.f, 0.36f, 0.2f);
         safeLabel->setAnchorPoint({0.f, 0.5f});
-        safeLabel->setPosition({40.f, 15.f});
-        m_panel->addChild(safeLabel, 1);
-        safeLabel->setTag(7001);
-    }
+        safeLabel->setPosition({44.f, 19.f});
+        this->addChild(safeLabel, 2);
 
-    // Update status tiap 0.15 detik
-    void tick(float) {
-        auto& m = MacroManager::get();
-        int sig = static_cast<int>(m.state) * 2 + (m.clicks.empty() ? 0 : 1);
-        if (sig != m_sig) {
-            m_sig = sig;
-            // buang label Safe Mode lama sebelum menyusun ulang
-            if (auto old = m_panel->getChildByTag(7001)) old->removeFromParent();
-            this->rebuild();
-        }
-
-        switch (m.state) {
-            case MacroManager::State::Recording:
-                m_status->setString(("REC  " + std::to_string(m.liveClickCount()) + " klik").c_str());
-                m_status->setColor({255, 90, 90});
-                m_info->setString(m.levelName.c_str());
-                this->setChip("REC", {255, 70, 70});
-                break;
-            case MacroManager::State::Playing:
-                m_status->setString("PLAY");
-                m_status->setColor({110, 255, 140});
-                m_info->setString(m.loadedName.c_str());
-                this->setChip("PLAY", {90, 255, 130});
-                break;
-            default:
-                m_status->setString("Idle");
-                m_status->setColor({200, 205, 225});
-                m_info->setString(m.loadedName.empty() ? "belum ada macro" : m.loadedName.c_str());
-                this->setChip("", {255, 255, 255});
-                break;
-        }
-    }
-
-    void setChip(char const* text, ccColor3B color) {
-        if (std::string(m_chip->getString()) == text) return;
-        m_chip->setString(text);
-        m_chip->setColor(color);
-        m_chip->stopAllActions();
-        m_chip->setOpacity(255);
-        if (text[0] != '\0') {
-            m_chip->runAction(CCRepeatForever::create(CCSequence::create(
-                CCFadeTo::create(0.5f, 90),
-                CCFadeTo::create(0.5f, 255),
-                nullptr
-            )));
-        }
-    }
-
-    // ---- animasi buka/tutup panel ----
-    void togglePanel() {
-        m_open = !m_open;
-        m_panel->stopAllActions();
-        if (m_open) {
-            m_panel->setVisible(true);
-            m_panel->runAction(CCEaseBackOut::create(CCScaleTo::create(0.22f, 1.f)));
-        } else {
-            m_panel->runAction(CCSequence::create(
-                CCScaleTo::create(0.12f, 0.01f),
-                CCHide::create(),
-                nullptr
-            ));
-        }
-    }
-
-    void closePanel() {
-        if (m_open) this->togglePanel();
+        return true;
     }
 
     // ---- aksi tombol ----
@@ -225,6 +134,7 @@ protected:
             } else {
                 Notification::create("Tidak ada klik yang terekam", NotificationIcon::Warning)->show();
             }
+            m_pause->onResume(nullptr);
             return;
         }
 
@@ -236,10 +146,9 @@ protected:
         // Langsung hidupkan practice mode, lalu mulai rekam dari awal level
         if (!pl->m_isPracticeMode) pl->togglePracticeMode(true);
         m.state = MacroManager::State::Recording;
-        pl->resetLevelFromStart();
 
         Notification::create("Rekam dimulai (practice mode aktif)", NotificationIcon::Success)->show();
-        this->closePanel();
+        m_pause->onRestartFull(nullptr);
     }
 
     void onPlay() {
@@ -250,6 +159,7 @@ protected:
         if (m.state == MacroManager::State::Playing) {
             m.stop();
             Notification::create("Playback dihentikan", NotificationIcon::Info)->show();
+            m_pause->onResume(nullptr);
             return;
         }
         if (m.state == MacroManager::State::Recording) {
@@ -263,16 +173,15 @@ protected:
         m.stop();
         m.seek(0);
         m.state = MacroManager::State::Playing;
-        pl->resetLevelFromStart();
 
         Notification::create("Playback dimulai", NotificationIcon::Success)->show();
-        this->closePanel();
+        m_pause->onRestartFull(nullptr);
     }
 
 public:
-    static KBControl* create() {
-        auto ret = new KBControl();
-        if (ret->init()) {
+    static KBPanel* create(PauseLayer* pause) {
+        auto ret = new KBPanel();
+        if (ret->setup(pause)) {
             ret->autorelease();
             return ret;
         }

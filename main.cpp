@@ -2,6 +2,7 @@
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/GJGameLevel.hpp>
 #include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/PauseLayer.hpp>
 #include "MacroManager.hpp"
 #include "Popups.hpp"
 #include "Control.hpp"
@@ -97,17 +98,8 @@ class $modify(KBPlayLayer, PlayLayer) {
 
     bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
         if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
-
+        // Masuk level baru: pastikan bot dalam keadaan berhenti
         MacroManager::get().stop();
-        if (m_uiLayer) {
-            auto ctrl = KBControl::create();
-            if (ctrl) {
-                // posisi: kiri atas layar
-                auto win = CCDirector::get()->getWinSize();
-                ctrl->setPosition({30.f, win.height - 70.f});
-                m_uiLayer->addChild(ctrl, 200);
-            }
-        }
         return true;
     }
 
@@ -172,5 +164,26 @@ class $modify(KBPlayLayer, PlayLayer) {
         }
         m.stop();
         PlayLayer::onQuit();
+    }
+};
+
+// ============================================================
+// Panel Karot Utils di dalam pause menu (sisi kiri)
+// ============================================================
+class $modify(KBPauseLayer, PauseLayer) {
+    void customSetup() {
+        PauseLayer::customSetup();
+
+        auto panel = KBPanel::create(this);
+        if (!panel) return;
+
+        auto win = CCDirector::get()->getWinSize();
+        float x = 14.f;
+        float y = (win.height - panel->getContentSize().height) / 2.f;
+        panel->setPosition({x - 40.f, y});
+        this->addChild(panel, 100);
+
+        // animasi masuk dari kiri
+        panel->runAction(CCEaseExponentialOut::create(CCMoveTo::create(0.3f, {x, y})));
     }
 };
