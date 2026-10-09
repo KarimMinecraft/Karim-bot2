@@ -4,19 +4,25 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
-#include <sstream>
+#include <iomanip>
 #include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
 using namespace geode::prelude;
 
-// Satu event klik: di frame berapa, tombol apa, ditekan/dilepas, player 1/2
+// Satu entri macro. Bisa berupa klik (snap=false) atau "snapshot" posisi player (snap=true)
+// yang dipakai untuk mengoreksi drift saat playback supaya akurasi tetap terjaga.
 struct Click {
     int frame;
-    int button;
+    int button;     // -1 untuk snapshot
     bool down;
     bool p1;
+    bool snap;
+    float px;
+    float py;
+    double yv;
 };
 
 class MacroManager {
@@ -25,13 +31,22 @@ public:
 
     State state = State::Idle;
     std::vector<Click> clicks;
-    size_t index = 0;          // posisi klik berikutnya saat playback
+    size_t index = 0;          // posisi entri berikutnya saat playback
     bool injecting = false;    // true saat bot sendiri yang menekan tombol
-    std::string loadedName;
+    std::string loadedName;    // nama macro yang sedang dimuat/disimpan
+    std::string levelName;     // nama level yang sedang direkam
 
     static MacroManager& get() {
         static MacroManager instance;
         return instance;
+    }
+
+    // ---------- Safe Mode (disimpan permanen, default ON) ----------
+    static bool safe() {
+        return Mod::get()->getSavedValue<bool>("safe-mode", true);
+    }
+    static void setSafe(bool v) {
+        Mod::get()->setSavedValue<bool>("safe-mode", v);
     }
 
     // ---------- folder & nama file ----------
@@ -52,17 +67,44 @@ public:
         return out;
     }
 
+    bool exists(std::string const& name) {
+        std::error_code ec;
+        return std::filesystem::exists(dir() / (name + ".kbot"), ec);
+    }
+
+    // Kalau nama sudah dipakai: bloodbath -> bloodbath_2 -> bloodbath_3 ...
+    std::string uniqueName(std::string const& base) {
+        if (!exists(base)) return base;
+        for (int i = 2; i < 10000; i++) {
+            auto n = base + "_" + std::to_string(i);
+            if (!exists(n)) return n;
+        }
+        return base + "_x";
+    }
+
     // ---------- simpan / load / hapus ----------
-    bool save(std::string const& rawName) {
-        auto name = sanitize(rawName);
+    bool save(std::string const& name) {
         std::ofstream f(dir() / (name + ".kbot"));
         if (!f) return false;
-        f << "KBOT1\n";
+        f << "KBOT2\n";
+        f << std::setprecision(9);
         for (auto const& c : clicks) {
-            f << c.frame << ' ' << c.button << ' ' << (c.down ? 1 : 0) << ' ' << (c.p1 ? 1 : 0) << '\n';
+            f << c.frame << ' ' << c.button << ' ' << (c.down ? 1 : 0) << ' ' << (c.p1 ? 1 : 0)
+              << ' ' << (c.snap ? 1 : 0) << ' ' << c.px << ' ' << c.py << ' ' << c.yv << '\n';
         }
         loadedName = name;
         return true;
+    }
+
+    // Dipanggil saat level selesai / rekaman dihentikan: simpan otomatis pakai nama level.
+    // Mengembalikan nama macro yang tersimpan (kosong kalau tidak ada yang disimpan).
+    std::string finishRecording(std::string const& suffix = "") {
+        state = State::Idle;
+        injecting = false;
+        if (clicks.empty()) return "";
+        auto name = uniqueName(sanitize(levelName) + suffix);
+        if (!save(name)) return "";
+        return name;
     }
 
     bool load(std::string const& name) {
@@ -70,12 +112,14 @@ public:
         if (!f) return false;
         std::string header;
         std::getline(f, header);
-        if (header != "KBOT1") return false;
+        if (header != "KBOT2") return false;
 
         std::vector<Click> loaded;
-        int frame, button, down, p1;
-        while (f >> frame >> button >> down >> p1) {
-            loaded.push_back({frame, button, down != 0, p1 != 0});
+        int frame, button, down, p1, snap;
+        float px, py;
+        double yv;
+        while (f >> frame >> button >> down >> p1 >> snap >> px >> py >> yv) {
+            loaded.push_back(Click{frame, button, down != 0, p1 != 0, snap != 0, px, py, yv});
         }
         clicks = std::move(loaded);
         loadedName = name;
@@ -98,10 +142,30 @@ public:
         return names;
     }
 
+    // Jumlah klik (tekan) di dalam file macro, untuk ditampilkan di daftar
+    int clickCount(std::string const& name) {
+        std::ifstream f(dir() / (name + ".kbot"));
+        if (!f) return 0;
+        std::string header;
+        std::getline(f, header);
+        int frame, button, down, p1, snap, count = 0;
+        float px, py;
+        double yv;
+        while (f >> frame >> button >> down >> p1 >> snap >> px >> py >> yv) {
+            if (!snap && down) count++;
+        }
+        return count;
+    }
+
+    int liveClickCount() const {
+        return static_cast<int>(std::count_if(clicks.begin(), clicks.end(),
+            [](Click const& c) { return !c.snap && c.down; }));
+    }
+
     // ---------- logika record / playback ----------
 
     // Dipanggil saat level di-reset (mati di practice mode -> balik ke checkpoint).
-    // Semua klik setelah frame checkpoint dibuang supaya yang tersimpan cuma run yang benar.
+    // Semua entri setelah frame checkpoint dibuang supaya yang tersimpan cuma run yang benar.
     void truncateFrom(int frame) {
         clicks.erase(
             std::remove_if(clicks.begin(), clicks.end(), [&](Click const& c) { return c.frame >= frame; }),
@@ -110,16 +174,17 @@ public:
         // Kalau tombol masih "ditahan" di akhir rekaman, tambahkan release di frame ini
         std::map<int, Click> held;
         for (auto const& c : clicks) {
+            if (c.snap) continue;
             int key = c.button * 2 + (c.p1 ? 1 : 0);
             if (c.down) held[key] = c;
             else held.erase(key);
         }
         for (auto const& [key, c] : held) {
-            clicks.push_back({frame, c.button, false, c.p1});
+            clicks.push_back(Click{frame, c.button, false, c.p1, false, c.px, c.py, c.yv});
         }
     }
 
-    // Lompat ke klik pertama yang frame-nya >= frame sekarang
+    // Lompat ke entri pertama yang frame-nya >= frame sekarang
     void seek(int frame) {
         index = std::lower_bound(
             clicks.begin(), clicks.end(), frame,

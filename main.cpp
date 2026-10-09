@@ -1,11 +1,16 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
+#include <Geode/modify/GJGameLevel.hpp>
 #include <Geode/modify/PlayLayer.hpp>
-#include <Geode/modify/PauseLayer.hpp>
 #include "MacroManager.hpp"
 #include "Popups.hpp"
+#include "Control.hpp"
 
 using namespace geode::prelude;
+
+// Interval (dalam step fisika) untuk snapshot posisi player.
+// Snapshot dipakai mengoreksi drift saat playback.
+static constexpr int SNAPSHOT_INTERVAL = 10;
 
 // ============================================================
 // Hook input & loop game: record klik dan putar ulang macro
@@ -17,10 +22,13 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
         // Saat playback, input manual pemain diabaikan (hanya klik dari bot)
         if (m.state == MacroManager::State::Playing && !m.injecting) return;
 
-        // Saat rekam, simpan setiap klik beserta nomor frame-nya
+        // Saat rekam, simpan setiap klik beserta nomor step & posisi player
         if (m.state == MacroManager::State::Recording && !m.injecting && PlayLayer::get()) {
             int frame = static_cast<int>(m_gameState.m_currentProgress);
-            m.clicks.push_back(Click{frame, button, down, isPlayer1});
+            auto* pl = isPlayer1 ? m_player1 : m_player2;
+            CCPoint p = pl ? pl->getPosition() : CCPoint{0.f, 0.f};
+            double yv = pl ? pl->m_yVelocity : 0.0;
+            m.clicks.push_back(Click{frame, button, down, isPlayer1, false, p.x, p.y, yv});
         }
 
         GJBaseGameLayer::handleButton(down, button, isPlayer1);
@@ -29,14 +37,37 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
     void processCommands(float dt, bool isHalfTick, bool isLastTick) {
         auto& m = MacroManager::get();
 
-        if (m.state == MacroManager::State::Playing && PlayLayer::get()) {
+        if (PlayLayer::get()) {
             int frame = static_cast<int>(m_gameState.m_currentProgress);
-            m.injecting = true;
-            while (m.index < m.clicks.size() && m.clicks[m.index].frame <= frame) {
-                auto const c = m.clicks[m.index++];
-                GJBaseGameLayer::handleButton(c.down, c.button, c.p1);
+
+            // ---- RECORD: simpan snapshot posisi tiap beberapa step ----
+            if (m.state == MacroManager::State::Recording && !m.injecting && m_player1) {
+                bool already = !m.clicks.empty() && m.clicks.back().snap && m.clicks.back().frame == frame;
+                if (frame % SNAPSHOT_INTERVAL == 0 && !already) {
+                    CCPoint p = m_player1->getPosition();
+                    m.clicks.push_back(Click{frame, -1, false, true, true, p.x, p.y, m_player1->m_yVelocity});
+                }
             }
-            m.injecting = false;
+
+            // ---- PLAY: tekan tombol sesuai macro + koreksi posisi ----
+            if (m.state == MacroManager::State::Playing) {
+                m.injecting = true;
+                while (m.index < m.clicks.size() && m.clicks[m.index].frame <= frame) {
+                    auto const c = m.clicks[m.index++];
+                    auto* pl = c.p1 ? m_player1 : m_player2;
+
+                    // Koreksi posisi hanya kalau step-nya persis sama dengan saat rekam
+                    if (pl && c.frame == frame && (c.px != 0.f || c.py != 0.f)) {
+                        pl->setPosition(CCPoint{c.px, c.py});
+                        pl->m_yVelocity = c.yv;
+                    }
+
+                    if (!c.snap) {
+                        GJBaseGameLayer::handleButton(c.down, c.button, c.p1);
+                    }
+                }
+                m.injecting = false;
+            }
         }
 
         GJBaseGameLayer::processCommands(dt, isHalfTick, isLastTick);
@@ -44,132 +75,102 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
 };
 
 // ============================================================
-// Hook PlayLayer: handle mati/reset di practice mode & keluar level
+// SAFE MODE: progress tidak naik / tidak tersimpan saat bot aktif
+// ============================================================
+class $modify(KBGameLevel, GJGameLevel) {
+    void savePercentage(int percent, bool isPracticeMode, int clicks, int attempts, bool isChkValid) {
+        auto& m = MacroManager::get();
+        if (m.state != MacroManager::State::Idle && MacroManager::safe()) {
+            return;   // jangan simpan persen apa pun
+        }
+        GJGameLevel::savePercentage(percent, isPracticeMode, clicks, attempts, isChkValid);
+    }
+};
+
+// ============================================================
+// Hook PlayLayer: tombol UI, mati/reset di practice mode, autosave
 // ============================================================
 class $modify(KBPlayLayer, PlayLayer) {
+    struct Fields {
+        bool restartPending = false;
+    };
+
+    bool init(GJGameLevel* level, bool useReplay, bool dontCreateObjects) {
+        if (!PlayLayer::init(level, useReplay, dontCreateObjects)) return false;
+
+        MacroManager::get().stop();
+        if (m_uiLayer) {
+            auto ctrl = KBControl::create();
+            if (ctrl) {
+                // posisi: kiri atas layar
+                auto win = CCDirector::get()->getWinSize();
+                ctrl->setPosition({30.f, win.height - 70.f});
+                m_uiLayer->addChild(ctrl, 200);
+            }
+        }
+        return true;
+    }
+
     void resetLevel() {
         PlayLayer::resetLevel();
+        m_fields->restartPending = false;
 
         auto& m = MacroManager::get();
         int frame = static_cast<int>(m_gameState.m_currentProgress);
 
         if (m.state == MacroManager::State::Recording) {
-            // Mati -> balik ke checkpoint: buang klik setelah checkpoint, lanjut rekam dari situ
+            // Mati -> balik ke checkpoint: buang entri setelah checkpoint, lanjut rekam dari situ
             m.truncateFrom(frame);
         } else if (m.state == MacroManager::State::Playing) {
             m.seek(frame);
         }
     }
 
+    void kbRestart() {
+        m_fields->restartPending = false;
+        this->resetLevelFromStart();
+    }
+
     void levelComplete() {
-        PlayLayer::levelComplete();
         auto& m = MacroManager::get();
-        if (m.state == MacroManager::State::Playing) m.stop();
+
+        // Sudah menunggu restart (Safe Mode) -> jangan proses ulang
+        if (m_fields->restartPending) return;
+
+        bool botActive = m.state != MacroManager::State::Idle;
+
+        // AUTOSAVE: level selesai saat merekam -> simpan otomatis pakai nama level
+        if (m.state == MacroManager::State::Recording) {
+            auto name = m.finishRecording();
+            if (!name.empty()) {
+                Notification::create("Macro disimpan otomatis: " + name, NotificationIcon::Success)->show();
+            }
+        } else if (m.state == MacroManager::State::Playing) {
+            m.stop();
+        }
+
+        // SAFE MODE: jangan kirim penyelesaian level / progress, ulang dari awal
+        if (botActive && MacroManager::safe()) {
+            m_fields->restartPending = true;
+            Notification::create("Safe Mode: penyelesaian level tidak dikirim", NotificationIcon::Info)->show();
+            this->runAction(CCSequence::create(
+                CCDelayTime::create(0.5f),
+                CCCallFunc::create(this, callfunc_selector(KBPlayLayer::kbRestart)),
+                nullptr
+            ));
+            return;
+        }
+
+        PlayLayer::levelComplete();
     }
 
     void onQuit() {
         auto& m = MacroManager::get();
-        // Jangan sampai rekaman hilang kalau keluar level sebelum sempat disimpan
+        // Jangan sampai rekaman hilang kalau keluar level sebelum selesai
         if (m.state == MacroManager::State::Recording && !m.clicks.empty()) {
-            m.save("autosave");
+            m.finishRecording("_partial");
         }
         m.stop();
         PlayLayer::onQuit();
-    }
-};
-
-// ============================================================
-// Tombol Karim Bot di pause menu
-// ============================================================
-class $modify(KBPauseLayer, PauseLayer) {
-    void customSetup() {
-        PauseLayer::customSetup();
-
-        auto win = CCDirector::get()->getWinSize();
-        auto menu = CCMenu::create();
-        menu->setID("karim-bot-menu"_spr);
-        menu->setPosition({0, 0});
-
-        auto& m = MacroManager::get();
-        bool recording = m.state == MacroManager::State::Recording;
-        bool playing = m.state == MacroManager::State::Playing;
-
-        float x = 60.f;
-        float y = win.height / 2 + 45.f;
-
-        auto title = CCLabelBMFont::create("Karim Bot", "goldFont.fnt");
-        title->setScale(0.6f);
-        title->setPosition({x, y + 32.f});
-        this->addChild(title);
-
-        // --- Tombol Record / Stop ---
-        auto recBtn = CCMenuItemExt::createSpriteExtra(
-            ButtonSprite::create(recording ? "Stop Rec" : "Record", "goldFont.fnt",
-                                 recording ? "GJ_button_06.png" : "GJ_button_01.png", 0.7f),
-            [this](CCObject*) {
-                auto& m = MacroManager::get();
-                if (m.state == MacroManager::State::Recording) {
-                    m.stop();
-                    if (!m.clicks.empty()) {
-                        SaveMacroPopup::create()->show();
-                    } else {
-                        Notification::create("Tidak ada klik yang terekam", NotificationIcon::Warning)->show();
-                    }
-                } else {
-                    m.stop();
-                    m.clicks.clear();
-                    m.loadedName.clear();
-                    m.state = MacroManager::State::Recording;
-                    Notification::create("Rekam aktif! Restart level / lanjut main", NotificationIcon::Success)->show();
-                }
-                this->onResume(nullptr);
-            }
-        );
-        recBtn->setPosition({x, y});
-        menu->addChild(recBtn);
-
-        // --- Tombol Play / Stop ---
-        auto playBtn = CCMenuItemExt::createSpriteExtra(
-            ButtonSprite::create(playing ? "Stop Play" : "Play", "goldFont.fnt",
-                                 playing ? "GJ_button_06.png" : "GJ_button_02.png", 0.7f),
-            [this](CCObject*) {
-                auto& m = MacroManager::get();
-                if (m.state == MacroManager::State::Playing) {
-                    m.stop();
-                    Notification::create("Playback dihentikan", NotificationIcon::Info)->show();
-                } else if (m.clicks.empty()) {
-                    Notification::create("Belum ada macro. Record atau Load dulu!", NotificationIcon::Warning)->show();
-                    return;
-                } else {
-                    m.stop();
-                    m.seek(0);
-                    m.state = MacroManager::State::Playing;
-                    Notification::create("Playback aktif! Restart level dari awal", NotificationIcon::Success)->show();
-                }
-                this->onResume(nullptr);
-            }
-        );
-        playBtn->setPosition({x, y - 38.f});
-        menu->addChild(playBtn);
-
-        // --- Tombol Load (tempat penyimpanan macro) ---
-        auto macroBtn = CCMenuItemExt::createSpriteExtra(
-            ButtonSprite::create("Load", "goldFont.fnt", "GJ_button_04.png", 0.7f),
-            [](CCObject*) {
-                MacroListPopup::create()->show();
-            }
-        );
-        macroBtn->setPosition({x, y - 76.f});
-        menu->addChild(macroBtn);
-
-        // --- Status ---
-        std::string status = recording ? "REC..." : playing ? "PLAY..." : "Idle";
-        if (!m.loadedName.empty()) status += " [" + m.loadedName + "]";
-        auto statusLabel = CCLabelBMFont::create(status.c_str(), "bigFont.fnt");
-        statusLabel->limitLabelWidth(100.f, 0.4f, 0.2f);
-        statusLabel->setPosition({x, y - 108.f});
-        this->addChild(statusLabel);
-
-        this->addChild(menu);
     }
 };
