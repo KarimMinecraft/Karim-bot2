@@ -1,6 +1,7 @@
 #pragma once
 #include "MacroManager.hpp"
 #include "Popups.hpp"
+#include "Settings.hpp"
 #include <Geode/ui/NineSlice.hpp>
 #include <Geode/ui/Notification.hpp>
 
@@ -11,7 +12,7 @@
 // ============================================================
 class KBPanel : public CCNode {
 protected:
-    static constexpr float PW = 132.f;   // lebar panel
+    static constexpr float PW = 148.f;   // lebar panel
     static constexpr float PH = 216.f;   // tinggi panel
 
     PauseLayer* m_pause = nullptr;
@@ -81,7 +82,7 @@ protected:
         m_body->addChild(info, 2);
 
         // ---- tombol (semua ukuran sama, rapi ditengah) ----
-        const float bw = 108.f, bh = 28.f;
+        const float bw = 124.f, bh = 28.f;
         auto menu = CCMenu::create();
         menu->setPosition({0, 0});
         menu->setContentSize({PW, PH});
@@ -101,12 +102,21 @@ protected:
         playBtn->setPosition({PW / 2, 92.f});
         menu->addChild(playBtn);
 
+        // baris bawah: Load + Opsi berdampingan (ukuran sama)
+        const float hw = 62.f;
         auto loadBtn = CCMenuItemExt::createSpriteExtra(
-            kbui::buttonNode("Load", bw, bh, "GJ_button_02.png", 0.62f),
+            kbui::buttonNode("Load", hw, bh, "GJ_button_02.png", 0.6f),
             [](CCObject*) { MacroListPopup::create()->show(); }
         );
-        loadBtn->setPosition({PW / 2, 58.f});
+        loadBtn->setPosition({PW / 2 - hw / 2 - 2.f, 58.f});
         menu->addChild(loadBtn);
+
+        auto optBtn = CCMenuItemExt::createSpriteExtra(
+            kbui::buttonNode("Opsi", hw, bh, "GJ_button_04.png", 0.6f),
+            [](CCObject*) { KBSettingsPopup::create()->show(); }
+        );
+        optBtn->setPosition({PW / 2 + hw / 2 + 2.f, 58.f});
+        menu->addChild(optBtn);
 
         // ---- pemisah + Safe Mode ----
         auto sep = CCLayerColor::create({255, 255, 255, 45}, PW - 28.f, 1.f);

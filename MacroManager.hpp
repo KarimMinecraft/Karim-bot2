@@ -2,6 +2,8 @@
 #include <Geode/Geode.hpp>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <optional>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -35,6 +37,60 @@ public:
     bool injecting = false;    // true saat bot sendiri yang menekan tombol
     std::string loadedName;    // nama macro yang sedang dimuat/disimpan
     std::string levelName;     // nama level yang sedang direkam
+
+    // ---------- Fitur bot tambahan (nyala/mati, tidak disimpan permanen) ----------
+    bool acOn = false;         // Auto Clicker
+    bool slopeOn = false;      // Auto Slope Wave
+    bool tainted = false;      // true kalau attempt ini pernah memakai bot (dipakai Safe Mode)
+
+    // ---------- Status tombol ----------
+    bool realDown = false;     // tombol layar yang ditekan pemain (asli)
+    bool gameDown = false;     // tombol yang terakhir dikirim ke game
+
+    // ---------- Auto Slope Wave: cache & kalibrasi ----------
+    std::vector<GameObject*> slopes;
+    GJBaseGameLayer* slopeOwner = nullptr;
+    size_t slopeObjCount = 0;
+    bool calibInit = false;
+    bool lastUpside = false;
+    bool lastMini = false;
+    double kHold = 1.0;        // perubahan y per x saat ditahan
+    double kRel = -1.0;        // perubahan y per x saat dilepas
+    float lastX = 0.f;
+    float lastY = 0.f;
+    int lastFrame = -1;
+    int lastAction = -1;       // -1 = tidak ada, 0 = lepas, 1 = tahan
+
+    static constexpr double TPS = 240.0;   // perkiraan step fisika per detik
+
+    // ---------- Pengaturan (disimpan permanen) ----------
+    static int clampInt(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+    static int acCps()      { return clampInt(Mod::get()->getSavedValue<int>("ac-cps", 30), 1, 120); }
+    static void setAcCps(int v)      { Mod::get()->setSavedValue<int>("ac-cps", clampInt(v, 1, 120)); }
+    static int slopeCps()   { return clampInt(Mod::get()->getSavedValue<int>("slope-cps", 60), 10, 120); }
+    static void setSlopeCps(int v)   { Mod::get()->setSavedValue<int>("slope-cps", clampInt(v, 10, 120)); }
+    static int slopeLook()  { return clampInt(Mod::get()->getSavedValue<int>("slope-look", 90), 30, 300); }
+    static void setSlopeLook(int v)  { Mod::get()->setSavedValue<int>("slope-look", clampInt(v, 30, 300)); }
+    static int snapInterval() { return clampInt(Mod::get()->getSavedValue<int>("snap-interval", 4), 1, 20); }
+    static void setSnapInterval(int v) { Mod::get()->setSavedValue<int>("snap-interval", clampInt(v, 1, 20)); }
+
+    bool drivesInput() const { return acOn || slopeOn; }
+
+    // Safe Mode berlaku kalau bot sedang aktif ATAU attempt ini sudah tercemar bot
+    bool botActive() const { return state != State::Idle || tainted || acOn || slopeOn; }
+
+    void clearSlopeCache() {
+        slopes.clear();
+        slopeOwner = nullptr;
+        slopeObjCount = 0;
+        resetSlopeCalibration();
+    }
+
+    void resetSlopeCalibration() {
+        calibInit = false;
+        lastAction = -1;
+        lastFrame = -1;
+    }
 
     static MacroManager& get() {
         static MacroManager instance;
@@ -99,8 +155,7 @@ public:
     // Dipanggil saat level selesai / rekaman dihentikan: simpan otomatis pakai nama level.
     // Mengembalikan nama macro yang tersimpan (kosong kalau tidak ada yang disimpan).
     std::string finishRecording(std::string const& suffix = "") {
-        state = State::Idle;
-        injecting = false;
+        stop();
         if (clicks.empty()) return "";
         auto name = uniqueName(sanitize(levelName) + suffix);
         if (!save(name)) return "";
@@ -193,6 +248,7 @@ public:
     }
 
     void stop() {
+        if (state != State::Idle) tainted = true;   // run ini sudah pakai bot -> Safe Mode tetap berlaku
         state = State::Idle;
         injecting = false;
     }
