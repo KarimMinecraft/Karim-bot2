@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <optional>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -43,6 +43,24 @@ public:
     bool slopeOn = false;      // Auto Slope Wave
     bool tainted = false;      // true kalau attempt ini pernah memakai bot (dipakai Safe Mode)
 
+    bool acHoldOnly = false;   // Auto Clicker hanya spam saat layar ditahan (default: langsung spam)
+    bool speedOn = false;      // Speed hack
+    int p1Flag = 1;            // nilai parameter ke-3 handleButton untuk player 1 (dipelajari otomatis)
+
+    // ---------- Penghitung step cadangan (kalau counter game tidak jalan) ----------
+    int callCount = 0;
+    int seenFrame = -1;
+    int frameMoves = 0;
+
+    // ---------- HUD debug ----------
+    std::string hudText;
+
+    // ---------- Speed hack (mulus) ----------
+    float speedCur = 1.f;      // kecepatan yang sedang dipakai (diperhalus)
+    float speedApplied = 1.f;
+    bool speedClockInit = false;
+    std::chrono::steady_clock::time_point speedClock;
+
     // ---------- Status tombol ----------
     bool realDown = false;     // tombol layar yang ditekan pemain (asli)
     bool gameDown = false;     // tombol yang terakhir dikirim ke game
@@ -71,13 +89,69 @@ public:
     static void setSlopeCps(int v)   { Mod::get()->setSavedValue<int>("slope-cps", clampInt(v, 10, 120)); }
     static int slopeLook()  { return clampInt(Mod::get()->getSavedValue<int>("slope-look", 90), 30, 300); }
     static void setSlopeLook(int v)  { Mod::get()->setSavedValue<int>("slope-look", clampInt(v, 30, 300)); }
-    static int snapInterval() { return clampInt(Mod::get()->getSavedValue<int>("snap-interval", 4), 1, 20); }
+    static int snapInterval() { return clampInt(Mod::get()->getSavedValue<int>("snap-interval", 2), 1, 20); }
+    static int speedPercent() { return clampInt(Mod::get()->getSavedValue<int>("speed-pct", 50), 5, 300); }
+    static void setSpeedPercent(int v) { Mod::get()->setSavedValue<int>("speed-pct", clampInt(v, 5, 300)); }
+    static int speedSmooth() { return clampInt(Mod::get()->getSavedValue<int>("speed-smooth", 7), 1, 10); }
+    static void setSpeedSmooth(int v) { Mod::get()->setSavedValue<int>("speed-smooth", clampInt(v, 1, 10)); }
+    static bool hitboxes() { return Mod::get()->getSavedValue<bool>("hitboxes", false); }
+    static void setHitboxes(bool v) { Mod::get()->setSavedValue<bool>("hitboxes", v); }
+    static bool hud() { return Mod::get()->getSavedValue<bool>("hud", true); }
+    static void setHud(bool v) { Mod::get()->setSavedValue<bool>("hud", v); }
     static void setSnapInterval(int v) { Mod::get()->setSavedValue<int>("snap-interval", clampInt(v, 1, 20)); }
 
     bool drivesInput() const { return acOn || slopeOn; }
 
     // Safe Mode berlaku kalau bot sedang aktif ATAU attempt ini sudah tercemar bot
-    bool botActive() const { return state != State::Idle || tainted || acOn || slopeOn; }
+    bool botActive() const {
+        return state != State::Idle || tainted || acOn || slopeOn || std::fabs(speedCur - 1.f) > 0.001f;
+    }
+
+    // ---------- Speed hack: kecepatan berubah pelan-pelan (easing) ----------
+    static void applyScale(float v) {
+        auto* d = CCDirector::get();
+        if (d && d->getScheduler()) d->getScheduler()->setTimeScale(v);
+    }
+
+    void resetSpeed() {
+        speedCur = 1.f;
+        speedClockInit = false;
+        if (std::fabs(speedApplied - 1.f) > 0.0001f) {
+            applyScale(1.f);
+            speedApplied = 1.f;
+        }
+    }
+
+    // Dipanggil tiap frame saat di dalam level
+    void tickSpeed() {
+        auto now = std::chrono::steady_clock::now();
+        float dt = 0.016f;
+        if (speedClockInit) {
+            dt = std::chrono::duration<float>(now - speedClock).count();
+            if (dt < 0.f) dt = 0.f;
+            if (dt > 0.1f) dt = 0.1f;
+        }
+        speedClock = now;
+        speedClockInit = true;
+
+        float target = speedOn ? static_cast<float>(speedPercent()) / 100.f : 1.f;
+        float rate = static_cast<float>(11 - speedSmooth()) * 1.4f;    // 1 = cepat, 10 = sangat halus
+        float k = 1.f - std::exp(-dt * rate);
+        speedCur += (target - speedCur) * k;
+        if (std::fabs(target - speedCur) < 0.003f) speedCur = target;
+
+        if (std::fabs(speedCur - speedApplied) > 0.0005f) {
+            applyScale(speedCur);
+            speedApplied = speedCur;
+        }
+        if (std::fabs(speedCur - 1.f) > 0.001f) tainted = true;   // run dengan speed hack tidak boleh tersimpan
+    }
+
+    void resetStepCounters() {
+        callCount = 0;
+        seenFrame = -1;
+        frameMoves = 0;
+    }
 
     void clearSlopeCache() {
         slopes.clear();
@@ -87,6 +161,7 @@ public:
     }
 
     void resetSlopeCalibration() {
+        resetStepCounters();
         calibInit = false;
         lastAction = -1;
         lastFrame = -1;
@@ -187,13 +262,22 @@ public:
         return std::filesystem::remove(dir() / (name + ".kbot"), ec);
     }
 
+    // Daftar macro: yang paling baru disimpan ada di paling atas
     std::vector<std::string> list() {
-        std::vector<std::string> names;
+        std::vector<std::pair<std::filesystem::file_time_type, std::string>> items;
         std::error_code ec;
         for (auto const& e : std::filesystem::directory_iterator(dir(), ec)) {
-            if (e.path().extension() == ".kbot") names.push_back(e.path().stem().string());
+            if (e.path().extension() != ".kbot") continue;
+            std::error_code ec2;
+            auto t = std::filesystem::last_write_time(e.path(), ec2);
+            items.push_back({t, e.path().stem().string()});
         }
-        std::sort(names.begin(), names.end());
+        std::sort(items.begin(), items.end(), [](auto const& a, auto const& b) {
+            if (a.first != b.first) return a.first > b.first;
+            return a.second < b.second;
+        });
+        std::vector<std::string> names;
+        for (auto const& it : items) names.push_back(it.second);
         return names;
     }
 
