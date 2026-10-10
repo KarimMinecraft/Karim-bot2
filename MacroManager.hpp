@@ -100,6 +100,8 @@ public:
     static void setSlopeCps(int v)   { Mod::get()->setSavedValue<int>("slope-cps", clampInt(v, 10, 120)); }
     static int slopeLook()  { return clampInt(Mod::get()->getSavedValue<int>("slope-look", 90), 30, 300); }
     static void setSlopeLook(int v)  { Mod::get()->setSavedValue<int>("slope-look", clampInt(v, 30, 300)); }
+    static bool slopeSimple() { return Mod::get()->getSavedValue<bool>("slope-simple", false); }
+    static void setSlopeSimple(bool v) { Mod::get()->setSavedValue<bool>("slope-simple", v); }
     static int acHold()     { return clampInt(Mod::get()->getSavedValue<int>("ac-hold", 1), 1, 20); }
     static void setAcHold(int v)     { Mod::get()->setSavedValue<int>("ac-hold", clampInt(v, 1, 20)); }
     static int snapInterval() { return clampInt(Mod::get()->getSavedValue<int>("snap-interval", 2), 1, 20); }

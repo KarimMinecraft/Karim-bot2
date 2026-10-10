@@ -62,19 +62,28 @@ protected:
         m_page->addChild(bg, 1);
     }
 
-    // Checkbox + judul
+    // Checkbox + judul + lencana ON/OFF di kanan
     void addToggle(char const* title, bool value, std::function<void(bool)> onChange) {
         float y = m_cursor - ROWH / 2;
         addRowBg(y);
 
-        auto toggle = CCMenuItemExt::createTogglerWithStandardSprites(0.6f, [onChange](CCMenuItemToggler* t) {
-            onChange(!t->isToggled());   // callback jalan sebelum state berubah
+        auto badge = CCLabelBMFont::create(value ? "ON" : "OFF", "bigFont.fnt");
+        badge->setScale(0.42f);
+        badge->setColor(value ? ccColor3B{90, 255, 120} : ccColor3B{150, 150, 160});
+        badge->setPosition({CW - 30.f, y});
+        m_page->addChild(badge, 3);
+
+        auto toggle = CCMenuItemExt::createTogglerWithStandardSprites(0.6f, [onChange, badge](CCMenuItemToggler* t) {
+            bool on = !t->isToggled();   // callback jalan sebelum state berubah
+            onChange(on);
+            badge->setString(on ? "ON" : "OFF");
+            badge->setColor(on ? ccColor3B{90, 255, 120} : ccColor3B{150, 150, 160});
         });
         toggle->toggle(value);
         toggle->setPosition({26.f, y});
         m_menu->addChild(toggle);
 
-        addText(title, 46.f, y, CW - 60.f, 0.42f, {255, 225, 140});
+        addText(title, 46.f, y, CW - 100.f, 0.42f, {255, 225, 140});
         m_cursor -= ROWH;
     }
 
@@ -84,6 +93,10 @@ protected:
         float y = m_cursor - ROWH / 2;
         addRowBg(y);
         addText(title, 12.f, y, 112.f, 0.36f);
+
+        auto valueBg = kbui::pill(54.f, 22.f, {10, 12, 30}, 200);
+        valueBg->setPosition({224.f, y});
+        m_page->addChild(valueBg, 2);
 
         auto value = CCLabelBMFont::create("", "goldFont.fnt");
         value->setPosition({224.f, y});
@@ -193,6 +206,9 @@ protected:
             Notification::create(on ? "Auto Slope Wave ON" : "Auto Slope Wave OFF",
                                  on ? NotificationIcon::Success : NotificationIcon::Info)->show();
         });
+        addToggle("Mode spam biasa (tanpa jaga jarak)", MacroManager::slopeSimple(), [](bool on) {
+            MacroManager::setSlopeSimple(on);
+        });
         addStepper("Kecepatan klik",
                    [] { return MacroManager::slopeCps(); },
                    [](int v) { MacroManager::setSlopeCps(v); },
@@ -201,7 +217,7 @@ protected:
                    [] { return MacroManager::slopeLook(); },
                    [](int v) { MacroManager::setSlopeLook(v); },
                    10, 30, false, 300, "");
-        addHint("Mini/besar, slope lonjong, dan 45 derajat dihitung otomatis.");
+        addHint("Aktif hanya saat wave dekat slope. Presisi = jaga jarak.");
 
         // ---------- Tab 3: Tampilan ----------
         beginPage();

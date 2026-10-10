@@ -162,8 +162,8 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
         m.lastFrame = tick;
 
         const double L = static_cast<double>(MacroManager::slopeLook());
-        const double window = 45.0;                    // hanya slope yang benar-benar dekat wave
-        const double approachDist = 20.0 + L * 0.25;   // jarak mulai bersiap sebelum slope
+        const double window = 40.0;                    // hanya slope yang benar-benar dekat wave
+        const double approachDist = 12.0 + L * 0.1;    // jarak mulai bersiap sebelum slope
         double sgn = (m.kHold > m.kRel) ? 1.0 : -1.0;
         double denom = m.kHold - m.kRel;
 
@@ -215,7 +215,8 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
                 m.lockOff = kbClamp(pos.y - bestY, -35.0, 35.0);
             }
             double err = (bestY + m.lockOff) - pos.y;           // >0: wave terlalu rendah
-            dHold = (tn - m.kRel) / denom + sgn * err / 14.0;
+            dHold = (tn - m.kRel) / denom;
+            if (!MacroManager::slopeSimple()) dHold += sgn * err / 14.0;   // mode presisi: jaga jarak ke slope
             info = "SLOPE: ikut slope  jarak " + std::to_string(static_cast<int>(m.lockOff)) +
                    "  miring " + std::to_string(static_cast<int>(tn * 100.0)) + "%";
         } else if (ahead && (aheadMinX - pos.x) <= approachDist) {
