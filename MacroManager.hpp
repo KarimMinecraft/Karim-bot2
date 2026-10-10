@@ -50,6 +50,11 @@ public:
     // ---------- Penghitung step cadangan (kalau counter game tidak jalan) ----------
     int fbCount = 0;           // berapa kali tombol harus ditekan langsung lewat player
     int callCount = 0;
+    double callRate = 240.0;   // tick (panggilan processCommands) per detik, diukur nyata
+    bool rateInit = false;
+    std::chrono::steady_clock::time_point rateClock;
+    int rateCalls = 0;
+    int acStart = -1000000;
     int seenFrame = -1;
     int frameMoves = 0;
 
@@ -95,6 +100,8 @@ public:
     static void setSlopeCps(int v)   { Mod::get()->setSavedValue<int>("slope-cps", clampInt(v, 10, 120)); }
     static int slopeLook()  { return clampInt(Mod::get()->getSavedValue<int>("slope-look", 90), 30, 300); }
     static void setSlopeLook(int v)  { Mod::get()->setSavedValue<int>("slope-look", clampInt(v, 30, 300)); }
+    static int acHold()     { return clampInt(Mod::get()->getSavedValue<int>("ac-hold", 1), 1, 20); }
+    static void setAcHold(int v)     { Mod::get()->setSavedValue<int>("ac-hold", clampInt(v, 1, 20)); }
     static int snapInterval() { return clampInt(Mod::get()->getSavedValue<int>("snap-interval", 2), 1, 20); }
     static int speedPercent() { return clampInt(Mod::get()->getSavedValue<int>("speed-pct", 50), 5, 300); }
     static void setSpeedPercent(int v) { Mod::get()->setSavedValue<int>("speed-pct", clampInt(v, 5, 300)); }
@@ -155,6 +162,8 @@ public:
 
     void resetStepCounters() {
         callCount = 0;
+        acStart = -1000000;
+        rateInit = false;
         seenFrame = -1;
         frameMoves = 0;
     }

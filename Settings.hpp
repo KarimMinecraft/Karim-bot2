@@ -175,10 +175,14 @@ protected:
                    [] { return MacroManager::acCps(); },
                    [](int v) { MacroManager::setAcCps(v); },
                    1, 10, true, 120, "");
+        addStepper("Lama tahan (step)",
+                   [] { return MacroManager::acHold(); },
+                   [](int v) { MacroManager::setAcHold(v); },
+                   1, 3, false, 20, "");
         addToggle("Hanya saat layar ditahan", MacroManager::get().acHoldOnly, [](bool on) {
             MacroManager::get().acHoldOnly = on;
         });
-        addHint("Nyalakan, tutup menu, lanjut main: bot langsung spam.");
+        addHint("Tahan 1 step = klik tipis (paling mirip klik asli).");
 
         // ---------- Tab 2: Auto Slope Wave ----------
         beginPage();

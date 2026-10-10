@@ -162,7 +162,8 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
         m.lastFrame = tick;
 
         const double L = static_cast<double>(MacroManager::slopeLook());
-        const double window = 120.0;
+        const double window = 45.0;                    // hanya slope yang benar-benar dekat wave
+        const double approachDist = 20.0 + L * 0.25;   // jarak mulai bersiap sebelum slope
         double sgn = (m.kHold > m.kRel) ? 1.0 : -1.0;
         double denom = m.kHold - m.kRel;
 
@@ -177,7 +178,7 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
             if (!s || s->m_isNoTouch || s->m_isPassable) continue;
             auto const& r = s->getObjectRect();
             double minX = r.getMinX(), maxX = r.getMaxX();
-            if (maxX < pos.x || minX > pos.x + L) continue;
+            if (maxX < pos.x || minX > pos.x + approachDist) continue;
 
             if (pos.x >= minX) {
                 double yl = s->slopeYPos(static_cast<float>(pos.x));
@@ -217,7 +218,7 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
             dHold = (tn - m.kRel) / denom + sgn * err / 14.0;
             info = "SLOPE: ikut slope  jarak " + std::to_string(static_cast<int>(m.lockOff)) +
                    "  miring " + std::to_string(static_cast<int>(tn * 100.0)) + "%";
-        } else if (ahead && (aheadMinX - pos.x) <= L) {
+        } else if (ahead && (aheadMinX - pos.x) <= approachDist) {
             // Slope belum sampai: terbang datar dan dekatkan diri ke ketinggian masuknya
             m.lockObj = nullptr;
             double d = pos.y - aheadY;
@@ -235,7 +236,7 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
         dHold = kbClamp(dHold, 0.0, 1.0);
 
         // ---- PWM dengan carry pecahan: rata-rata tahan/lepas mengikuti dHold dengan tepat ----
-        int T = static_cast<int>(std::lround(MacroManager::TPS / static_cast<double>(MacroManager::slopeCps())));
+        int T = static_cast<int>(std::lround(m.callRate / static_cast<double>(MacroManager::slopeCps())));
         if (T < 2) T = 2;
         if (tick - m.cycleStart >= T || tick < m.cycleStart) {
             double want = dHold * T + m.slopeAcc;
@@ -263,10 +264,21 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
     void kbDrive(int frame) {
         auto& m = MacroManager::get();
 
-        // Penghitung step: pakai counter game; kalau counter itu ternyata tidak bergerak, pakai hitungan sendiri
+        // Penghitung: tiap panggilan = 1 tick (tidak bergantung counter game, jadi tidak ada aliasing)
         m.callCount++;
-        if (frame != m.seenFrame) { m.seenFrame = frame; m.frameMoves++; }
-        int tick = (m.callCount > 12 && m.frameMoves < 3) ? m.callCount : frame;
+        int tick = m.callCount;
+
+        // Ukur berapa tick per detik (nyata) supaya "klik per detik" benar-benar per detik
+        auto now = std::chrono::steady_clock::now();
+        if (!m.rateInit) { m.rateInit = true; m.rateClock = now; m.rateCalls = 0; }
+        m.rateCalls++;
+        float el = std::chrono::duration<float>(now - m.rateClock).count();
+        if (el >= 0.5f) {
+            double r = static_cast<double>(m.rateCalls) / static_cast<double>(el);
+            if (r > 30.0 && r < 1000.0) m.callRate = m.callRate * 0.5 + r * 0.5;
+            m.rateClock = now;
+            m.rateCalls = 0;
+        }
 
         bool desired = m.realDown;
         bool controlled = false;
@@ -281,14 +293,18 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
             }
         }
         if (!controlled && m.acOn && (!m.acHoldOnly || m.realDown)) {
-            int P = static_cast<int>(std::lround(MacroManager::TPS / static_cast<double>(MacroManager::acCps())));
+            int P = static_cast<int>(std::lround(m.callRate / static_cast<double>(MacroManager::acCps())));
             if (P < 2) P = 2;
-            int holdSteps = (P + 1) / 2;
-            desired = (tick % P) < holdSteps;
+            int holdSteps = MacroManager::acHold();
+            if (holdSteps > P - 1) holdSteps = P - 1;
+            if (holdSteps < 1) holdSteps = 1;
+            if (tick - m.acStart >= P || tick < m.acStart) m.acStart = tick;
+            desired = (tick - m.acStart) < holdSteps;
             controlled = true;
             m.tainted = true;
-            m.hudText = "AUTO CLICKER: " + std::to_string(MacroManager::acCps()) + " cps  (langsung ke player: " +
-                        std::to_string(m.fbCount) + "x)";
+            m.hudText = "AUTO CLICKER: " + std::to_string(MacroManager::acCps()) + " cps  tahan " +
+                        std::to_string(holdSteps) + " dari " + std::to_string(P) + " step  (" +
+                        std::to_string(static_cast<int>(m.callRate)) + " step/dtk)";
         }
 
         if (desired != m.gameDown) this->kbSend(desired);
