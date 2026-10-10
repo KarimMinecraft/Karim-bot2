@@ -48,6 +48,7 @@ public:
     int p1Flag = 1;            // nilai parameter ke-3 handleButton untuk player 1 (dipelajari otomatis)
 
     // ---------- Penghitung step cadangan (kalau counter game tidak jalan) ----------
+    int fbCount = 0;           // berapa kali tombol harus ditekan langsung lewat player
     int callCount = 0;
     int seenFrame = -1;
     int frameMoves = 0;
@@ -78,6 +79,11 @@ public:
     float lastY = 0.f;
     int lastFrame = -1;
     int lastAction = -1;       // -1 = tidak ada, 0 = lepas, 1 = tahan
+    GameObject* lockObj = nullptr;   // slope yang sedang diikuti
+    double lockOff = 0.0;      // jarak vertikal wave ke garis slope yang dikunci
+    double slopeAcc = 0.0;     // sisa pecahan PWM
+    int cycleStart = -1000000;
+    int cycleHold = 0;
 
     static constexpr double TPS = 240.0;   // perkiraan step fisika per detik
 
@@ -165,6 +171,10 @@ public:
         calibInit = false;
         lastAction = -1;
         lastFrame = -1;
+        lockObj = nullptr;
+        slopeAcc = 0.0;
+        cycleStart = -1000000;
+        cycleHold = 0;
     }
 
     static MacroManager& get() {

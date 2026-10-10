@@ -203,16 +203,6 @@ protected:
         beginPage();
         addToggle("Show Hitboxes", MacroManager::hitboxes(), [](bool on) {
             MacroManager::setHitboxes(on);
-            auto* gm = GameManager::get();
-            if (gm) gm->setGameVariable("0166", on);
-            if (auto* pl = PlayLayer::get()) {
-                pl->updateDebugDrawSettings();
-                pl->m_isDebugDrawEnabled = on;
-                if (pl->m_debugDrawNode) {
-                    if (!on) pl->m_debugDrawNode->clear();
-                    pl->m_debugDrawNode->setVisible(on);
-                }
-            }
         });
         addToggle("Info bot di layar (HUD kecil)", MacroManager::hud(), [](bool on) {
             MacroManager::setHud(on);

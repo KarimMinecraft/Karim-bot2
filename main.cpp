@@ -50,6 +50,17 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
         m.gameDown = down;
         GJBaseGameLayer::handleButton(down, 1, f1);
 
+        // Pastikan player benar-benar menerima tombolnya; kalau tidak, tekan langsung lewat player
+        if (m_player1) {
+            auto it = m_player1->m_holdingButtons.find(1);
+            bool holding = (it != m_player1->m_holdingButtons.end()) && it->second;
+            if (holding != down) {
+                m.fbCount++;
+                if (down) m_player1->pushButton(PlayerButton::Jump);
+                else m_player1->releaseButton(PlayerButton::Jump);
+            }
+        }
+
         if (m_gameState.m_isDualMode) {
             if (recording) this->kbRecordClick(down, 1, !f1);
             GJBaseGameLayer::handleButton(down, 1, !f1);
@@ -86,6 +97,8 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
 
     // ----------------------------------------------------------
     // Auto Slope Wave.
+    // Ide: wave "mengunci" jarak vertikalnya terhadap garis slope terdekat lalu terbang
+    // sejajar dengan slope itu (spam tahan/lepas sesuai kemiringan), jadi tidak menabrak.
     // Hasil: -1 = tidak ada slope relevan (kontrol balik ke pemain), 0 = lepas, 1 = tahan
     // ----------------------------------------------------------
     int kbSlope(int tick) {
@@ -94,6 +107,7 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
         m.hudText = "SLOPE: bukan wave";
         if (!p || !p->m_isDart) {          // hanya aktif di mode wave
             m.lastAction = -1;
+            m.lockObj = nullptr;
             return -1;
         }
 
@@ -103,6 +117,7 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
             m.slopes.clear();
             m.slopeOwner = this;
             m.slopeObjCount = objCount;
+            m.lockObj = nullptr;
             if (m_objects) {
                 for (auto* obj : CCArrayExt<GameObject*>(m_objects)) {
                     if (obj && obj->m_objectType == GameObjectType::Slope) m.slopes.push_back(obj);
@@ -146,87 +161,97 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
         m.lastY = pos.y;
         m.lastFrame = tick;
 
-        // ---- Cari slope terdekat di bawah & di atas wave ----
         const double L = static_cast<double>(MacroManager::slopeLook());
-        const double ahead = L * 0.35;      // titik sampling di depan wave
-        const double window = 110.0;        // jarak vertikal maksimum slope yang dianggap relevan
-        const double margin = mini ? 5.0 : 8.0;
+        const double window = 120.0;
+        double sgn = (m.kHold > m.kRel) ? 1.0 : -1.0;
+        double denom = m.kHold - m.kRel;
 
-        bool haveBelow = false, haveAbove = false;
-        double belowY = 0, belowTan = 0, aboveY = 0, aboveTan = 0;
-        int nearCount = 0;
+        // ---- 1) Slope yang sedang dilewati wave (x wave ada di dalam jangkauan slope) ----
+        GameObject* best = nullptr;
+        double bestDist = 1e9, bestY = 0.0, bestMinX = 0.0, bestMaxX = 0.0;
+        // ---- 2) Slope terdekat di depan ----
+        GameObject* ahead = nullptr;
+        double aheadMinX = 1e9, aheadY = 0.0;
 
         for (auto* s : m.slopes) {
             if (!s || s->m_isNoTouch || s->m_isPassable) continue;
             auto const& r = s->getObjectRect();
             double minX = r.getMinX(), maxX = r.getMaxX();
-            if (maxX < pos.x - 2.0 || minX > pos.x + L) continue;
+            if (maxX < pos.x || minX > pos.x + L) continue;
 
-            double xe = kbClamp(pos.x + ahead, minX, maxX);
-            double ys = s->slopeYPos(static_cast<float>(xe));
-            if (!std::isfinite(ys)) continue;
-            ys = kbClamp(ys, static_cast<double>(r.getMinY()) - 2.0, static_cast<double>(r.getMaxY()) + 2.0);
-
-            double xa = kbClamp(xe - 4.0, minX, maxX);
-            double xb = kbClamp(xe + 4.0, minX, maxX);
-            double tn = 0.0;
-            if ((xb - xa) > 0.5) {
-                tn = (static_cast<double>(s->slopeYPos(static_cast<float>(xb))) -
-                      static_cast<double>(s->slopeYPos(static_cast<float>(xa)))) / (xb - xa);
-            }
-            if (!std::isfinite(tn)) tn = 0.0;
-
-            double yNow, tanUse;
             if (pos.x >= minX) {
-                // Wave sudah di atas slope: proyeksikan garis slope ke posisi x sekarang
-                yNow = ys - tn * (xe - pos.x);
-                tanUse = tn;
+                double yl = s->slopeYPos(static_cast<float>(pos.x));
+                if (!std::isfinite(yl)) continue;
+                double dist = std::fabs(pos.y - yl);
+                if (dist > window) continue;
+                // slope yang sedang dikunci diutamakan supaya tidak berpindah-pindah
+                if (s == m.lockObj) dist -= 25.0;
+                if (dist < bestDist) { bestDist = dist; best = s; bestY = yl; bestMinX = minX; bestMaxX = maxX; }
             } else {
-                // Slope belum sampai: arahkan ke titik masuknya, tanpa kemiringan
-                yNow = ys;
-                tanUse = 0.0;
-            }
-
-            if (std::fabs(yNow - pos.y) > window) continue;
-            nearCount++;
-
-            if (yNow <= pos.y) {
-                if (!haveBelow || yNow > belowY) { haveBelow = true; belowY = yNow; belowTan = tanUse; }
-            } else {
-                if (!haveAbove || yNow < aboveY) { haveAbove = true; aboveY = yNow; aboveTan = tanUse; }
+                double ye = s->slopeYPos(static_cast<float>(minX));
+                if (!std::isfinite(ye)) continue;
+                if (std::fabs(pos.y - ye) > window) continue;
+                if (minX < aheadMinX) { aheadMinX = minX; ahead = s; aheadY = ye; }
             }
         }
 
-        double target, tanT;
-        if (haveBelow && haveAbove) {
-            target = ((belowY + margin) + (aboveY - margin)) / 2.0;   // tengah-tengah lorong
-            tanT = (belowTan + aboveTan) / 2.0;
-        } else if (haveBelow) {
-            target = belowY + margin;
-            tanT = belowTan;
-        } else if (haveAbove) {
-            target = aboveY - margin;
-            tanT = aboveTan;
+        double dHold;
+        std::string info;
+        if (best) {
+            // kemiringan garis slope di posisi wave
+            double xa = kbClamp(pos.x - 4.0, bestMinX, bestMaxX);
+            double xb = kbClamp(pos.x + 4.0, bestMinX, bestMaxX);
+            double tn = 0.0;
+            if ((xb - xa) > 0.5) {
+                tn = (static_cast<double>(best->slopeYPos(static_cast<float>(xb))) -
+                      static_cast<double>(best->slopeYPos(static_cast<float>(xa)))) / (xb - xa);
+            }
+            if (!std::isfinite(tn)) tn = 0.0;
+
+            // slope baru -> kunci jarak vertikal wave saat ini terhadap garis slope
+            if (best != m.lockObj) {
+                m.lockObj = best;
+                m.lockOff = kbClamp(pos.y - bestY, -35.0, 35.0);
+            }
+            double err = (bestY + m.lockOff) - pos.y;           // >0: wave terlalu rendah
+            dHold = (tn - m.kRel) / denom + sgn * err / 14.0;
+            info = "SLOPE: ikut slope  jarak " + std::to_string(static_cast<int>(m.lockOff)) +
+                   "  miring " + std::to_string(static_cast<int>(tn * 100.0)) + "%";
+        } else if (ahead && (aheadMinX - pos.x) <= L) {
+            // Slope belum sampai: terbang datar dan dekatkan diri ke ketinggian masuknya
+            m.lockObj = nullptr;
+            double d = pos.y - aheadY;
+            double target = pos.y;
+            if (d > 35.0) target = aheadY + 35.0;
+            else if (d < -35.0) target = aheadY - 35.0;
+            dHold = (0.0 - m.kRel) / denom + sgn * (target - pos.y) / 16.0;
+            info = "SLOPE: siap masuk (" + std::to_string(static_cast<int>(aheadMinX - pos.x)) + " lagi)";
         } else {
+            m.lockObj = nullptr;
             m.lastAction = -1;
             m.hudText = "SLOPE: wave, tidak ada slope dekat";
             return -1;
         }
-
-        // ---- Hitung rasio tahan/lepas (PWM) supaya rata-rata mengikuti slope ----
-        double dHold = (tanT - m.kRel) / (m.kHold - m.kRel);          // feed-forward dari kemiringan
-        double sgn = (m.kHold > m.kRel) ? 1.0 : -1.0;
-        dHold += sgn * (target - pos.y) / 12.0;                         // koreksi posisi
         dHold = kbClamp(dHold, 0.0, 1.0);
 
+        // ---- PWM dengan carry pecahan: rata-rata tahan/lepas mengikuti dHold dengan tepat ----
         int T = static_cast<int>(std::lround(MacroManager::TPS / static_cast<double>(MacroManager::slopeCps())));
         if (T < 2) T = 2;
-        int holdSteps = static_cast<int>(std::lround(dHold * T));
-        bool desired = (tick % T) < holdSteps;
+        if (tick - m.cycleStart >= T || tick < m.cycleStart) {
+            double want = dHold * T + m.slopeAcc;
+            int hs = static_cast<int>(std::floor(want + 1e-6));
+            if (hs < 0) hs = 0;
+            if (hs > T) hs = T;
+            m.slopeAcc = want - hs;
+            if (m.slopeAcc > 1.0) m.slopeAcc = 1.0;
+            if (m.slopeAcc < -1.0) m.slopeAcc = -1.0;
+            m.cycleHold = hs;
+            m.cycleStart = tick;
+        }
+        bool desired = (tick - m.cycleStart) < m.cycleHold;
 
         m.lastAction = desired ? 1 : 0;
-        m.hudText = "SLOPE: AKTIF (" + std::to_string(nearCount) + " dekat) " + (desired ? "tahan" : "lepas") +
-                    "  duty " + std::to_string(static_cast<int>(dHold * 100.0)) + "%";
+        m.hudText = info + "  duty " + std::to_string(static_cast<int>(dHold * 100.0)) + "%";
         return desired ? 1 : 0;
     }
 
@@ -262,33 +287,71 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
             desired = (tick % P) < holdSteps;
             controlled = true;
             m.tainted = true;
-            m.hudText = "AUTO CLICKER: " + std::to_string(MacroManager::acCps()) + " cps";
+            m.hudText = "AUTO CLICKER: " + std::to_string(MacroManager::acCps()) + " cps  (langsung ke player: " +
+                        std::to_string(m.fbCount) + "x)";
         }
 
         if (desired != m.gameDown) this->kbSend(desired);
     }
 
-    // ---- Show Hitboxes ----
-    void kbHitboxes() {
+    // ---- Show Hitboxes: digambar sendiri (tidak bergantung fitur debug bawaan game) ----
+    void kbDrawHitboxes() {
+        CCNode* layer = m_objectLayer;
+        if (!layer) return;
         bool on = MacroManager::hitboxes();
-        static bool wasOn = false;
-        if (on) {
-            if (!m_isDebugDrawEnabled) m_isDebugDrawEnabled = true;
-            if (m_debugDrawNode && !m_debugDrawNode->isVisible()) m_debugDrawNode->setVisible(true);
-        } else if (wasOn) {
-            m_isDebugDrawEnabled = false;
-            if (m_debugDrawNode) {
-                m_debugDrawNode->clear();
-                m_debugDrawNode->setVisible(false);
+        auto* node = static_cast<CCDrawNode*>(layer->getChildByTag(7772));
+        if (!node) {
+            if (!on) return;
+            node = CCDrawNode::create();
+            node->setTag(7772);
+            layer->addChild(node, 5000);
+        }
+        if (!on) {
+            if (node->isVisible()) {
+                node->clear();
+                node->setVisible(false);
+            }
+            return;
+        }
+        node->setVisible(true);
+        node->clear();
+
+        auto drawRectBox = [node](CCRect const& r, ccColor4F fill, ccColor4F border) {
+            CCPoint pts[4] = {
+                CCPoint{r.getMinX(), r.getMinY()}, CCPoint{r.getMaxX(), r.getMinY()},
+                CCPoint{r.getMaxX(), r.getMaxY()}, CCPoint{r.getMinX(), r.getMaxY()}
+            };
+            node->drawPolygon(pts, 4, fill, 1.f, border);
+        };
+
+        CCPoint ref = m_player1 ? m_player1->getPosition() : CCPoint{0.f, 0.f};
+        if (m_objects) {
+            for (auto* obj : CCArrayExt<GameObject*>(m_objects)) {
+                if (!obj) continue;
+                auto type = obj->m_objectType;
+                if (type == GameObjectType::Decoration) continue;
+                if (obj->m_isDecoration || obj->m_isDecoration2) continue;
+                CCPoint op = obj->getPosition();
+                if (std::fabs(op.x - ref.x) > 520.f || std::fabs(op.y - ref.y) > 420.f) continue;
+
+                ccColor4F border = {0.f, 1.f, 0.35f, 0.95f};
+                if (type == GameObjectType::Hazard) border = {1.f, 0.1f, 0.1f, 0.95f};
+                else if (type == GameObjectType::Solid || type == GameObjectType::Slope) border = {0.2f, 0.5f, 1.f, 0.95f};
+                ccColor4F fill = {border.r, border.g, border.b, 0.12f};
+                drawRectBox(obj->getObjectRect(), fill, border);
             }
         }
-        wasOn = on;
+        if (m_player1) drawRectBox(m_player1->getObjectRect(), ccColor4F{1.f, 1.f, 0.f, 0.15f}, ccColor4F{1.f, 1.f, 0.f, 1.f});
+        if (m_player2 && m_gameState.m_isDualMode) {
+            drawRectBox(m_player2->getObjectRect(), ccColor4F{1.f, 1.f, 0.f, 0.15f}, ccColor4F{1.f, 1.f, 0.f, 1.f});
+        }
     }
 
     void update(float dt) {
         // Speed hack: kecepatan berubah pelan-pelan supaya mulus
         if (PlayLayer::get()) MacroManager::get().tickSpeed();
         GJBaseGameLayer::update(dt);
+        if (PlayLayer::get()) this->kbDrawHitboxes();
     }
 
     void processCommands(float dt, bool isHalfTick, bool isLastTick) {
@@ -296,8 +359,6 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
 
         if (PlayLayer::get() && m_player1) {
             int frame = static_cast<int>(m_gameState.m_currentProgress);
-
-            this->kbHitboxes();
 
             // ---- RECORD: simpan snapshot posisi tiap beberapa step ----
             if (m.state == MacroManager::State::Recording && !m.injecting) {
