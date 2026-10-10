@@ -8,7 +8,7 @@
 	},
 	"id": "karim.karim-bot",
 	"name": "Karot Utils",
-	"version": "v1.5.1",
+	"version": "v1.5.2",
 	"developer": "Karim",
 	"description": "Bot level: rekam klik di practice mode, autosave macro sesuai nama level, load/play, dengan Safe Mode.",
 	"tags": ["utility", "gameplay"]
