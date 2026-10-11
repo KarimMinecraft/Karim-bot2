@@ -1,0 +1,24 @@
+# Rendering Utils
+
+Rekam gameplay Geometry Dash menjadi file video, langsung dari dalam game.
+
+## Cara pakai
+1. Masuk ke level, buka menu **Pause**.
+2. Tekan tombol **Render** (kiri bawah) untuk membuka **Render Studio**.
+3. Atur resolusi, FPS, dan kualitas di tab **Opsi**.
+4. Tekan **MULAI RENDER**. Level dimulai ulang dan perekaman berjalan.
+5. Selesai level, video tersimpan otomatis. Atau pause lalu **STOP & SIMPAN**.
+
+## Fitur
+- Waktu game dikunci per frame, jadi video mulus walau HP lambat
+- Resolusi 360p sampai 1080p, FPS 24 / 30 / 60
+- Pengaturan kualitas video
+- Berhenti otomatis setelah level selesai
+- Opsi tampilkan hitbox di video
+- Indikator REC (tidak ikut terekam)
+- Daftar hasil render, ukuran file, dan hapus
+
+## Catatan
+- Video **tanpa suara**.
+- Merender lebih lambat dari waktu asli, itu normal.
+- Format AVI (MJPEG), ukuran file besar. Tersimpan di folder `renders` di data mod.
