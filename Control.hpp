@@ -194,6 +194,7 @@ protected:
 
         m.stop();
         m.clicks.clear();
+        m.hasRot = true;
         m.loadedName.clear();
         m.levelName = pl->m_level->m_levelName;
 

@@ -25,6 +25,7 @@ struct Click {
     float px;
     float py;
     double yv;
+    float rot = 0.f;   // rotasi player (KBOT3)
 };
 
 class MacroManager {
@@ -33,6 +34,7 @@ public:
 
     State state = State::Idle;
     std::vector<Click> clicks;
+    bool hasRot = true;        // macro ini menyimpan rotasi (KBOT3)
     size_t index = 0;          // posisi entri berikutnya saat playback
     bool injecting = false;    // true saat bot sendiri yang menekan tombol
     std::string loadedName;    // nama macro yang sedang dimuat/disimpan
@@ -104,7 +106,7 @@ public:
     static void setSlopeSimple(bool v) { Mod::get()->setSavedValue<bool>("slope-simple", v); }
     static int acHold()     { return clampInt(Mod::get()->getSavedValue<int>("ac-hold", 1), 1, 20); }
     static void setAcHold(int v)     { Mod::get()->setSavedValue<int>("ac-hold", clampInt(v, 1, 20)); }
-    static int snapInterval() { return clampInt(Mod::get()->getSavedValue<int>("snap-interval", 2), 1, 20); }
+    static int snapInterval() { return clampInt(Mod::get()->getSavedValue<int>("snap-interval", 1), 1, 20); }
     static int speedPercent() { return clampInt(Mod::get()->getSavedValue<int>("speed-pct", 50), 5, 300); }
     static void setSpeedPercent(int v) { Mod::get()->setSavedValue<int>("speed-pct", clampInt(v, 5, 300)); }
     static int speedSmooth() { return clampInt(Mod::get()->getSavedValue<int>("speed-smooth", 7), 1, 10); }
@@ -238,11 +240,11 @@ public:
     bool save(std::string const& name) {
         std::ofstream f(dir() / (name + ".kbot"));
         if (!f) return false;
-        f << "KBOT2\n";
+        f << "KBOT3\n";
         f << std::setprecision(9);
         for (auto const& c : clicks) {
             f << c.frame << ' ' << c.button << ' ' << (c.down ? 1 : 0) << ' ' << (c.p1 ? 1 : 0)
-              << ' ' << (c.snap ? 1 : 0) << ' ' << c.px << ' ' << c.py << ' ' << c.yv << '\n';
+              << ' ' << (c.snap ? 1 : 0) << ' ' << c.px << ' ' << c.py << ' ' << c.yv << ' ' << c.rot << '\n';
         }
         loadedName = name;
         return true;
@@ -263,15 +265,19 @@ public:
         if (!f) return false;
         std::string header;
         std::getline(f, header);
-        if (header != "KBOT2") return false;
+        bool v3 = (header == "KBOT3");
+        if (header != "KBOT2" && !v3) return false;
 
         std::vector<Click> loaded;
         int frame, button, down, p1, snap;
         float px, py;
         double yv;
+        float rot = 0.f;
         while (f >> frame >> button >> down >> p1 >> snap >> px >> py >> yv) {
-            loaded.push_back(Click{frame, button, down != 0, p1 != 0, snap != 0, px, py, yv});
+            if (v3 && !(f >> rot)) break;
+            loaded.push_back(Click{frame, button, down != 0, p1 != 0, snap != 0, px, py, yv, rot});
         }
+        hasRot = v3;
         clicks = std::move(loaded);
         loadedName = name;
         index = 0;
@@ -308,10 +314,12 @@ public:
         if (!f) return 0;
         std::string header;
         std::getline(f, header);
+        bool v3 = (header == "KBOT3");
         int frame, button, down, p1, snap, count = 0;
-        float px, py;
+        float px, py, rot;
         double yv;
         while (f >> frame >> button >> down >> p1 >> snap >> px >> py >> yv) {
+            if (v3 && !(f >> rot)) break;
             if (!snap && down) count++;
         }
         return count;
@@ -340,7 +348,7 @@ public:
             else held.erase(key);
         }
         for (auto const& [key, c] : held) {
-            clicks.push_back(Click{frame, c.button, false, c.p1, false, c.px, c.py, c.yv});
+            clicks.push_back(Click{frame, c.button, false, c.p1, false, c.px, c.py, c.yv, c.rot});
         }
     }
 

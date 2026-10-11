@@ -36,7 +36,8 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
         auto* pl = this->kbPlayer(flag);
         CCPoint p = pl ? pl->getPosition() : CCPoint{0.f, 0.f};
         double yv = pl ? pl->m_yVelocity : 0.0;
-        m.clicks.push_back(Click{frame, button, down, flag, false, p.x, p.y, yv});
+        float rot = pl ? pl->getRotation() : 0.f;
+        m.clicks.push_back(Click{frame, button, down, flag, false, p.x, p.y, yv, rot});
     }
 
     // Kirim tombol utama ke game (player 1, dan player 2 kalau mode dual).
@@ -377,12 +378,17 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
         if (PlayLayer::get() && m_player1) {
             int frame = static_cast<int>(m_gameState.m_currentProgress);
 
-            // ---- RECORD: simpan snapshot posisi tiap beberapa step ----
+            // ---- RECORD: simpan "foto" keadaan player tiap beberapa step (default: tiap step) ----
             if (m.state == MacroManager::State::Recording && !m.injecting) {
                 bool already = !m.clicks.empty() && m.clicks.back().snap && m.clicks.back().frame == frame;
                 if (frame % MacroManager::snapInterval() == 0 && !already) {
+                    bool f1 = (m.p1Flag != 0);
                     CCPoint p = m_player1->getPosition();
-                    m.clicks.push_back(Click{frame, -1, false, true, true, p.x, p.y, m_player1->m_yVelocity});
+                    m.clicks.push_back(Click{frame, -1, false, f1, true, p.x, p.y, m_player1->m_yVelocity, m_player1->getRotation()});
+                    if (m_gameState.m_isDualMode && m_player2) {
+                        CCPoint p2 = m_player2->getPosition();
+                        m.clicks.push_back(Click{frame, -1, false, !f1, true, p2.x, p2.y, m_player2->m_yVelocity, m_player2->getRotation()});
+                    }
                 }
             }
 
@@ -397,6 +403,7 @@ class $modify(KBBaseGameLayer, GJBaseGameLayer) {
                     if (pl && c.frame == frame && (c.px != 0.f || c.py != 0.f)) {
                         pl->setPosition(CCPoint{c.px, c.py});
                         pl->m_yVelocity = c.yv;
+                        if (c.snap && m.hasRot) pl->setRotation(c.rot);
                     }
 
                     if (!c.snap) {
