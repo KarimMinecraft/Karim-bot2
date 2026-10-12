@@ -310,20 +310,25 @@ inline bool encodeAac(AuApi& a, std::vector<int16_t> const& pcm, int rate, int c
 }
 
 inline bool addAudioImpl(std::string const& videoPath, std::string const& songFile,
-                         std::vector<AudioSeg> const& segs, double totalSec) {
+                         std::vector<AudioSeg> const& segs, double totalSec, std::string& err) {
     auto& a = AuApi::get();
-    if (!a.ok || segs.empty() || totalSec <= 0.0) return false;
+    if (!a.ok) { err = "libmediandk tidak bisa dimuat"; return false; }
+    if (segs.empty() || totalSec <= 0.0) { err = "tidak ada data musik"; return false; }
 
     double maxSong = 0.0;
     for (auto const& s : segs) maxSong = (std::max)(maxSong, s.songSec);
     std::vector<int16_t> pcm;
     int rate = 44100, ch = 2;
-    if (!decodeSong(a, songFile, maxSong + totalSec + 5.0, pcm, rate, ch)) return false;
+    if (!decodeSong(a, songFile, maxSong + totalSec + 5.0, pcm, rate, ch)) {
+        err = "decode lagu gagal";
+        return false;
+    }
 
     std::vector<AacChunk> chunks;
     void* aFmt = nullptr;
     if (!encodeAac(a, pcm, rate, ch, segs, totalSec, chunks, aFmt)) {
         if (aFmt) a.fmtDelete(aFmt);
+        err = "encode AAC gagal";
         return false;
     }
     pcm.clear();
@@ -335,6 +340,7 @@ inline bool addAudioImpl(std::string const& videoPath, std::string const& songFi
     if (!vex || a.exSetSrc(vex, videoPath.c_str()) != 0) {
         if (vex) a.exDelete(vex);
         a.fmtDelete(aFmt);
+        err = "video tidak bisa dibaca";
         return false;
     }
     size_t n = a.exTracks(vex);
@@ -353,6 +359,7 @@ inline bool addAudioImpl(std::string const& videoPath, std::string const& songFi
     if (vtrack < 0) {
         a.exDelete(vex);
         a.fmtDelete(aFmt);
+        err = "track video tidak ada";
         return false;
     }
     a.exSelect(vex, static_cast<size_t>(vtrack));
@@ -364,6 +371,7 @@ inline bool addAudioImpl(std::string const& videoPath, std::string const& songFi
         a.fmtDelete(vfmt);
         a.fmtDelete(aFmt);
         a.exDelete(vex);
+        err = "muxer gagal dibuat";
         return false;
     }
     ssize_t vt = a.muxAddTrack(mux, vfmt);
@@ -415,24 +423,27 @@ inline bool addAudioImpl(std::string const& videoPath, std::string const& songFi
     std::error_code ec;
     if (!ok) {
         std::filesystem::remove(tmpPath, ec);
+        err = "muxer gagal start";
         return false;
     }
     std::filesystem::rename(tmpPath, videoPath, ec);
     if (ec) {
         std::filesystem::remove(tmpPath, ec);
+        err = "gagal mengganti file video";
         return false;
     }
     return true;
 }
 
 inline bool addAudio(std::string const& videoPath, std::string const& songFile,
-                     std::vector<AudioSeg> const& segs, double totalSec) {
-    return addAudioImpl(videoPath, songFile, segs, totalSec);
+                     std::vector<AudioSeg> const& segs, double totalSec, std::string& err) {
+    return addAudioImpl(videoPath, songFile, segs, totalSec, err);
 }
 
 #else
 
-inline bool addAudio(std::string const&, std::string const&, std::vector<AudioSeg> const&, double) {
+inline bool addAudio(std::string const&, std::string const&, std::vector<AudioSeg> const&, double, std::string& err) {
+    err = "bukan Android";
     return false;
 }
 

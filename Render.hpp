@@ -163,11 +163,29 @@ public:
     }
 
     // Siapkan file lagu level ini (file sementara). Mengembalikan "" kalau tidak ketemu.
+    static inline std::string audioLog;   // catatan diagnosis audio
+
     static std::string prepareSong() {
+        audioLog.clear();
         auto* pl = PlayLayer::get();
         if (!pl || !pl->m_level) return "";
         std::vector<std::string> cands;
         int songID = pl->m_level->m_songID;
+        // 1) file yang benar-benar dipakai FMOD untuk musik level
+        if (auto* fmod = FMODAudioEngine::get()) {
+            std::string idStr = songID > 0 ? std::to_string(songID) : std::string();
+            std::vector<std::string> byId, byCh;
+            for (auto& kv : fmod->m_fmodMusic) {
+                std::string p = kv.second.m_filePath;
+                if (p.empty() || p.find("menuLoop") != std::string::npos) continue;
+                std::string const prefix = "file:///android_asset/";
+                if (p.compare(0, prefix.size(), prefix) == 0) p = p.substr(prefix.size());
+                if (!idStr.empty() && p.find(idStr) != std::string::npos) byId.push_back(p);
+                else if (kv.second.m_channelID == 0) byCh.push_back(p);
+            }
+            for (auto& p : byId) cands.push_back(p);
+            for (auto& p : byCh) cands.push_back(p);
+        }
         if (songID > 0) {
             std::string id = std::to_string(songID);
             std::string wp = CCFileUtils::sharedFileUtils()->getWritablePath();
@@ -188,6 +206,7 @@ public:
                 cands.push_back(std::string(names[t]) + ".ogg");
             }
         }
+        for (auto const& c : cands) audioLog += "cari: " + c + "\n";
         for (auto const& c : cands) {
             unsigned long size = 0;
             unsigned char* data = CCFileUtils::sharedFileUtils()->getFileData(c.c_str(), "rb", &size);
@@ -203,8 +222,12 @@ public:
                 std::fclose(f);
             }
             delete[] data;
-            if (ok) return out.string();
+            if (ok) {
+                audioLog += "dipakai: " + c + " (" + std::to_string(size) + " byte)\n";
+                return out.string();
+            }
         }
+        audioLog += "lagu tidak ditemukan\n";
         return "";
     }
 
@@ -261,7 +284,14 @@ public:
         winFrames = 0;
         segs.clear();
         audioAdded = false;
+        audioLog.clear();
         songFile = (useMp4 && audio()) ? prepareSong() : "";
+        {
+            double off = 0.0;
+            auto* pl2 = PlayLayer::get();
+            if (pl2 && pl2->m_levelSettings) off = static_cast<double>(pl2->m_levelSettings->m_songOffset);
+            segs.push_back({0.0, off});
+        }
         ticked = false;
         startClock = std::chrono::steady_clock::now();
         lastCapture = startClock;
@@ -282,10 +312,23 @@ public:
             rt->release();
             rt = nullptr;
         }
-        if (n > 0 && useMp4 && !songFile.empty() && !segs.empty()) {
-            audioAdded = kbvid::addAudio(curPath, songFile, segs, secs);
-            if (notify) {
-                if (!audioAdded) Notification::create("Audio gagal ditambahkan, video tanpa suara", NotificationIcon::Warning)->show();
+        if (n > 0 && useMp4 && audio()) {
+            std::string err;
+            if (songFile.empty()) {
+                err = "file lagu tidak ditemukan";
+            } else {
+                audioAdded = kbvid::addAudio(curPath, songFile, segs, secs, err);
+            }
+            if (!audioAdded) {
+                audioLog += "GAGAL: " + err + "\n";
+                if (notify) Notification::create("Tanpa suara: " + err, NotificationIcon::Warning)->show();
+            } else {
+                audioLog += "audio OK\n";
+            }
+            FILE* lf = std::fopen((dir() / "audio-log.txt").string().c_str(), "wb");
+            if (lf) {
+                std::fwrite(audioLog.data(), 1, audioLog.size(), lf);
+                std::fclose(lf);
             }
         }
         if (!songFile.empty()) {

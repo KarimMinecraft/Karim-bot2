@@ -23,11 +23,11 @@ namespace rui {
 
     inline bool same(ccColor3B a, ccColor3B b) { return a.r == b.r && a.g == b.g && a.b == b.b; }
 
-    inline NineSlice* box(float w, float h, ccColor3B c, GLubyte op = 255) {
-        auto n = NineSlice::create("square02_001.png");
-        n->setContentSize({w, h});
-        n->setColor(c);
-        n->setOpacity(op);
+    // kotak warna polos (tidak bergantung pada tekstur game supaya warnanya pasti terang)
+    inline CCLayerColor* box(float w, float h, ccColor3B c, GLubyte op = 255) {
+        auto n = CCLayerColor::create(ccColor4B{c.r, c.g, c.b, op}, w, h);
+        n->ignoreAnchorPointForPosition(false);
+        n->setAnchorPoint({0.5f, 0.5f});
         return n;
     }
 
@@ -88,18 +88,23 @@ protected:
 
     // ---------- kerangka ----------
     bool init(PauseLayer* pause) {
-        if (!Popup::init(PWIDTH, PHEIGHT, "square02_001.png")) return false;
+        if (!Popup::init(PWIDTH, PHEIGHT)) return false;
         m_pause = pause;
         this->setOpacity(70);   // latar belakang tidak terlalu gelap
-        m_bgSprite->setColor(rui::BG);
-        m_bgSprite->setOpacity(255);
+        if (m_bgSprite) m_bgSprite->setVisible(false);
+        auto border = rui::box(PWIDTH, PHEIGHT, rui::HEAD);
+        border->setPosition({PWIDTH / 2, PHEIGHT / 2});
+        m_mainLayer->addChild(border, -2);
+        auto bgl = rui::box(PWIDTH - 6.f, PHEIGHT - 6.f, rui::BG);
+        bgl->setPosition({PWIDTH / 2, PHEIGHT / 2});
+        m_mainLayer->addChild(bgl, -1);
 
         // header
         auto head = rui::box(PWIDTH - 12.f, 32.f, rui::HEAD);
         head->setPosition({PWIDTH / 2, PHEIGHT - 22.f});
         m_mainLayer->addChild(head, 1);
         rui::label(m_mainLayer, "RENDERING UTILS", 24.f, PHEIGHT - 22.f, 0.62f, {255, 255, 255});
-        rui::label(m_mainLayer, "v2.3", PWIDTH - 24.f, PHEIGHT - 22.f, 0.42f, {255, 236, 226}, false);
+        rui::label(m_mainLayer, "v2.3.1", PWIDTH - 24.f, PHEIGHT - 22.f, 0.42f, {255, 236, 226}, false);
 
         this->showTab(0);
         return true;

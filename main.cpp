@@ -113,10 +113,7 @@ class $modify(KBPlayLayer, PlayLayer) {
             hud->setTag(RenderManager::HUD_TAG);
             hud->setPosition({win.width / 2.f, 18.f});
 
-            auto bg = NineSlice::create("square02_001.png");
-            bg->setContentSize({210.f, 22.f});
-            bg->setColor({20, 20, 30});
-            bg->setOpacity(190);
+            auto bg = rui::box(210.f, 22.f, ccColor3B{20, 20, 30}, 190);
             hud->addChild(bg);
 
             auto dot = CCDrawNode::create();
@@ -171,25 +168,22 @@ class $modify(KBPauseLayer, PauseLayer) {
         PauseLayer::customSetup();
 
         bool rec = RenderManager::get().rendering;
-        auto bg = NineSlice::create("square02_001.png");
-        bg->setContentSize({84.f, 26.f});
-        bg->setColor(rec ? ccColor3B{255, 82, 96} : ccColor3B{255, 214, 160});
-        bg->setOpacity(255);
+        auto bg = rui::box(92.f, 28.f, rec ? ccColor3B{255, 82, 96} : ccColor3B{255, 214, 150});
 
         auto holder = CCNode::create();
-        holder->setContentSize({84.f, 26.f});
-        bg->setPosition({42.f, 13.f});
+        holder->setContentSize({92.f, 28.f});
+        bg->setPosition({46.f, 14.f});
         holder->addChild(bg);
 
         if (!rec) {
             auto dot = CCDrawNode::create();
-            dot->drawDot({14.f, 13.f}, 4.f, ccColor4F{1.f, 0.32f, 0.38f, 1.f});
+            dot->drawDot({14.f, 14.f}, 4.f, ccColor4F{1.f, 0.32f, 0.38f, 1.f});
             holder->addChild(dot);
         }
         auto lbl = CCLabelBMFont::create(rec ? "STOP REC" : "Render", "bigFont.fnt");
-        lbl->limitLabelWidth(rec ? 70.f : 52.f, 0.45f, 0.1f);
+        lbl->limitLabelWidth(rec ? 76.f : 56.f, 0.5f, 0.1f);
         lbl->setColor(rec ? ccColor3B{255, 255, 255} : ccColor3B{38, 32, 58});
-        lbl->setPosition({rec ? 42.f : 52.f, 13.f});
+        lbl->setPosition({rec ? 46.f : 56.f, 14.f});
         holder->addChild(lbl);
 
         auto item = CCMenuItemExt::createSpriteExtra(holder, [this](CCMenuItemSpriteExtra*) {
@@ -197,7 +191,8 @@ class $modify(KBPauseLayer, PauseLayer) {
         });
         auto menu = CCMenu::create();
         menu->setPosition({0.f, 0.f});
-        item->setPosition({56.f, 30.f});
+        auto winSz = CCDirector::get()->getWinSize();
+        item->setPosition({62.f, winSz.height - 24.f});   // pojok kiri atas
         menu->addChild(item);
         this->addChild(menu, 100);
     }

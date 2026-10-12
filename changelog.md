@@ -1,3 +1,8 @@
+# v2.3.1
+- Fix UI gelap: semua panel sekarang warna polos terang (tidak lagi memakai tekstur gelap game)
+- Tombol Render pindah ke pojok kiri atas pause menu
+- Audio: lagu dicari dari file yang dipakai game, kalau gagal muncul alasannya + catatan di renders/audio-log.txt
+
 # v2.3.0
 - Fix: video tidak lagi tampil kecil di pojok (ukuran texture render disesuaikan)
 - Musik level ikut direkam, ditambahkan setelah render selesai
