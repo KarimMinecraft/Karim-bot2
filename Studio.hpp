@@ -4,18 +4,18 @@
 #include "Render.hpp"
 
 // ============================================================
-// RENDER STUDIO - tampilan baru: gelap, aksen merah-koral & tosca,
+// RENDER STUDIO - tampilan baru: cerah (krem & oranye muda), aksen merah-koral,
 // sidebar di kiri, isi di kanan.
 // ============================================================
 namespace rui {
-    inline ccColor3B const BG      = {12, 14, 24};
-    inline ccColor3B const SIDE    = {20, 23, 38};
-    inline ccColor3B const CARD    = {26, 30, 48};
-    inline ccColor3B const CARD2   = {34, 39, 62};
+    inline ccColor3B const BG      = {250, 246, 238};
+    inline ccColor3B const SIDE    = {255, 214, 160};
+    inline ccColor3B const CARD    = {255, 255, 255};
+    inline ccColor3B const CARD2   = {255, 232, 196};
     inline ccColor3B const ACCENT  = {255, 82, 96};
-    inline ccColor3B const TEAL    = {70, 226, 204};
-    inline ccColor3B const TEXT    = {235, 238, 250};
-    inline ccColor3B const DIM     = {138, 148, 180};
+    inline ccColor3B const TEAL    = {0, 140, 126};
+    inline ccColor3B const TEXT    = {38, 32, 58};
+    inline ccColor3B const DIM     = {104, 98, 126};
 
     inline NineSlice* box(float w, float h, ccColor3B c, GLubyte op = 255) {
         auto n = NineSlice::create("square02_001.png");
@@ -44,6 +44,8 @@ namespace rui {
         bg->setPosition({w / 2, h / 2});
         node->addChild(bg, 0);
         auto l = CCLabelBMFont::create(text.c_str(), "bigFont.fnt");
+        bool strong = (c.r == ACCENT.r && c.g == ACCENT.g && c.b == ACCENT.b);
+        l->setColor(strong ? ccColor3B{255, 255, 255} : TEXT);
         l->limitLabelWidth(w - 12.f, ts, 0.18f);
         l->setPosition({w / 2, h / 2 + 1.f});
         node->addChild(l, 1);
@@ -321,11 +323,11 @@ protected:
         m_page->addChild(card, 1);
 
         rui::label(m_page, "RENDERING UTILS", 14.f, CHEIGHT - 18.f, 0.52f, rui::ACCENT);
-        rui::label(m_page, "v2.0 - rekam gameplay jadi video", 14.f, CHEIGHT - 36.f, 0.5f, rui::DIM, true, CWIDTH - 28.f, "chatFont.fnt");
+        rui::label(m_page, "v2.2 - rekam gameplay jadi video", 14.f, CHEIGHT - 36.f, 0.5f, rui::DIM, true, CWIDTH - 28.f, "chatFont.fnt");
 
         char const* lines[] = {
             "Merekam gameplay Geometry Dash langsung menjadi",
-            "file video (.avi) tanpa aplikasi tambahan.",
+            "file video (.mp4) tanpa aplikasi tambahan.",
             "",
             "- Waktu game dikunci per frame, jadi video selalu",
             "  mulus walau HP-mu tidak sekuat itu.",

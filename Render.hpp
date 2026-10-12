@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include "Mjpeg.hpp"
+#include "Mp4Enc.hpp"
 
 using namespace geode::prelude;
 
@@ -30,7 +31,7 @@ public:
     static int clampI(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
     static int fps()        { return clampI(Mod::get()->getSavedValue<int>("r-fps", 30), 10, 60); }
     static void setFps(int v)        { Mod::get()->setSavedValue<int>("r-fps", clampI(v, 10, 60)); }
-    static int heightP()    { return clampI(Mod::get()->getSavedValue<int>("r-height", 720), 240, 2160); }
+    static int heightP()    { return clampI(Mod::get()->getSavedValue<int>("r-height", 480), 240, 2160); }
     static void setHeightP(int v)    { Mod::get()->setSavedValue<int>("r-height", clampI(v, 240, 2160)); }
     static int quality()    { return clampI(Mod::get()->getSavedValue<int>("r-quality", 80), 30, 95); }
     static void setQuality(int v)    { Mod::get()->setSavedValue<int>("r-quality", clampI(v, 30, 95)); }
@@ -90,7 +91,8 @@ public:
         std::vector<std::pair<std::filesystem::file_time_type, std::filesystem::path>> items;
         std::error_code ec;
         for (auto const& e : std::filesystem::directory_iterator(dir(), ec)) {
-            if (e.path().extension() != ".avi") continue;
+            auto ext = e.path().extension();
+            if (ext != ".avi" && ext != ".mp4") continue;
             std::error_code ec2;
             items.push_back({std::filesystem::last_write_time(e.path(), ec2), e.path()});
         }
@@ -125,11 +127,32 @@ public:
         oh &= ~1;
         int ow = static_cast<int>(std::lround(static_cast<double>(sw) * oh / sh));
         ow &= ~1;
+#ifdef GEODE_IS_ANDROID
+        ow &= ~15;
+        oh &= ~15;
+#endif
         if (ow < 16 || oh < 16) return false;
 
-        auto path = dir() / (sanitize(levelName) + "_" + timestamp() + ".avi");
-        if (!avi.open(path.string(), ow, oh, fps())) {
-            return false;
+        auto base = dir() / (sanitize(levelName) + "_" + timestamp());
+        useMp4 = false;
+        std::filesystem::path path;
+#ifdef GEODE_IS_ANDROID
+        {
+            double bpp = 0.04 + 0.14 * (static_cast<double>(quality()) / 100.0);
+            int br = static_cast<int>(static_cast<double>(ow) * oh * fps() * bpp);
+            if (br < 400000) br = 400000;
+            path = base;
+            path += ".mp4";
+            if (mp4.open(path.string(), ow, oh, fps(), br)) useMp4 = true;
+        }
+#endif
+        if (!useMp4) {
+            path = base;
+            path += ".avi";
+            if (!avi.open(path.string(), ow, oh, fps())) return false;
+#ifdef GEODE_IS_ANDROID
+            Notification::create("MP4 tidak didukung HP ini, pakai AVI", NotificationIcon::Warning)->show();
+#endif
         }
         curPath = path.string();
         outW = ow;
@@ -149,9 +172,10 @@ public:
         rendering = false;
         ticked = false;
         endCountdown = -1;
-        int n = avi.frames();
+        int n = useMp4 ? mp4.frames() : avi.frames();
         double secs = static_cast<double>(n) / static_cast<double>(fps());
-        avi.close();
+        if (useMp4) mp4.close();
+        else avi.close();
         if (rt) {
             rt->release();
             rt = nullptr;
@@ -211,8 +235,14 @@ public:
         int iw = static_cast<int>(img->getWidth());
         int ih = static_cast<int>(img->getHeight());
         if (data && iw > 0 && ih > 0) {
-            auto jpeg = kbvid::JpegEncoder::encode(data, iw, ih, outW, outH, quality());
-            if (!avi.addFrame(jpeg)) {
+            bool okw;
+            if (useMp4) {
+                okw = mp4.addFrame(data, iw, ih);
+            } else {
+                auto jpeg = kbvid::JpegEncoder::encode(data, iw, ih, outW, outH, quality());
+                okw = avi.addFrame(jpeg);
+            }
+            if (!okw) {
                 img->release();
                 Notification::create("Gagal menulis video (penyimpanan penuh?)", NotificationIcon::Error)->show();
                 stop(false);
@@ -263,6 +293,8 @@ public:
 
 private:
     kbvid::AviWriter avi;
+    kbvid::Mp4Writer mp4;
+    bool useMp4 = false;
     std::string curPath;
     CCRenderTexture* rt = nullptr;
     int rtW = 0, rtH = 0;

@@ -3,6 +3,7 @@
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/PauseLayer.hpp>
+#include <chrono>
 #include "Render.hpp"
 #include "Studio.hpp"
 
@@ -17,11 +18,26 @@ using namespace geode::prelude;
 class $modify(KBScheduler, CCScheduler) {
     void update(float dt) {
         auto& r = RenderManager::get();
-        if (r.rendering) dt = 1.f / static_cast<float>(RenderManager::fps());
-        CCScheduler::update(dt);
-        if (r.rendering && r.ticked && PlayLayer::get()) {
+        if (!r.rendering) {
+            CCScheduler::update(dt);
+            return;
+        }
+        // Beberapa langkah render per frame layar (lebih cepat dari 1 langkah per frame layar)
+        float step = 1.f / static_cast<float>(RenderManager::fps());
+        auto t0 = std::chrono::steady_clock::now();
+        for (int i = 0; i < 24; i++) {
             r.ticked = false;
-            r.captureFrame();
+            CCScheduler::update(step);
+            if (!r.rendering) break;
+            if (r.ticked && PlayLayer::get()) {
+                r.ticked = false;
+                r.captureFrame();
+            } else {
+                break;   // game tidak jalan (pause / menu): kembali ke frame layar normal
+            }
+            if (!r.rendering) break;
+            double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+            if (ms > 45.0) break;
         }
     }
 };
@@ -102,13 +118,13 @@ class $modify(KBPlayLayer, PlayLayer) {
 
             auto bg = NineSlice::create("square02_001.png");
             bg->setContentSize({150.f, 20.f});
-            bg->setColor({12, 14, 24});
-            bg->setOpacity(200);
+            bg->setColor({255, 82, 96});
+            bg->setOpacity(235);
             bg->setPosition({0.f, 0.f});
             hud->addChild(bg);
 
             auto dot = CCDrawNode::create();
-            dot->drawDot({-62.f, 0.f}, 4.f, ccColor4F{1.f, 0.32f, 0.38f, 1.f});
+            dot->drawDot({-62.f, 0.f}, 4.f, ccColor4F{1.f, 1.f, 1.f, 1.f});
             hud->addChild(dot);
 
             auto label = CCLabelBMFont::create("REC 00:00", "chatFont.fnt");
@@ -126,9 +142,8 @@ class $modify(KBPlayLayer, PlayLayer) {
 
     void levelComplete() {
         auto& r = RenderManager::get();
-        if (r.rendering && RenderManager::autoStop() && r.endCountdown < 0) {
-            r.endCountdown = RenderManager::fps() * 3;
-        }
+        // Level selesai: langsung simpan videonya
+        if (r.rendering && RenderManager::autoStop()) r.stop(true);
         PlayLayer::levelComplete();
     }
 
@@ -145,8 +160,8 @@ class $modify(KBPauseLayer, PauseLayer) {
         bool rec = RenderManager::get().rendering;
         auto bg = NineSlice::create("square02_001.png");
         bg->setContentSize({84.f, 26.f});
-        bg->setColor(rec ? ccColor3B{255, 82, 96} : ccColor3B{12, 14, 24});
-        bg->setOpacity(rec ? 255 : 220);
+        bg->setColor(rec ? ccColor3B{255, 82, 96} : ccColor3B{255, 214, 160});
+        bg->setOpacity(255);
 
         auto holder = CCNode::create();
         holder->setContentSize({84.f, 26.f});
@@ -160,6 +175,7 @@ class $modify(KBPauseLayer, PauseLayer) {
         }
         auto lbl = CCLabelBMFont::create(rec ? "STOP REC" : "Render", "bigFont.fnt");
         lbl->limitLabelWidth(rec ? 70.f : 52.f, 0.45f, 0.1f);
+        lbl->setColor(rec ? ccColor3B{255, 255, 255} : ccColor3B{38, 32, 58});
         lbl->setPosition({rec ? 42.f : 52.f, 13.f});
         holder->addChild(lbl);
 

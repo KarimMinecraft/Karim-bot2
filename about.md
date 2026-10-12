@@ -21,4 +21,4 @@ Rekam gameplay Geometry Dash menjadi file video, langsung dari dalam game.
 ## Catatan
 - Video **tanpa suara**.
 - Merender lebih lambat dari waktu asli, itu normal.
-- Format AVI (MJPEG), ukuran file besar. Tersimpan di folder `renders` di data mod.
+- Format MP4 (H.264) supaya bisa diputar di galeri HP. Kalau HP tidak mendukung, otomatis pakai AVI (buka dengan VLC). Tersimpan di folder `renders` di data mod.
