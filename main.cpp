@@ -22,22 +22,19 @@ class $modify(KBScheduler, CCScheduler) {
             CCScheduler::update(dt);
             return;
         }
-        // Beberapa langkah render per frame layar (lebih cepat dari 1 langkah per frame layar)
+        // Lancar -> kecepatan normal. Lag -> game melambat supaya video tetap mulus.
+        int n = r.planSteps(dt);
         float step = 1.f / static_cast<float>(RenderManager::fps());
-        auto t0 = std::chrono::steady_clock::now();
-        for (int i = 0; i < 24; i++) {
+        for (int i = 0; i < n; i++) {
             r.ticked = false;
             CCScheduler::update(step);
             if (!r.rendering) break;
             if (r.ticked && PlayLayer::get()) {
                 r.ticked = false;
+                r.addGameTime(step);
                 r.captureFrame();
-            } else {
-                break;   // game tidak jalan (pause / menu): kembali ke frame layar normal
             }
             if (!r.rendering) break;
-            double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
-            if (ms > 45.0) break;
         }
     }
 };
@@ -114,30 +111,46 @@ class $modify(KBPlayLayer, PlayLayer) {
             auto win = CCDirector::get()->getWinSize();
             auto hud = CCNode::create();
             hud->setTag(RenderManager::HUD_TAG);
-            hud->setPosition({win.width / 2.f, 16.f});
+            hud->setPosition({win.width / 2.f, 18.f});
 
             auto bg = NineSlice::create("square02_001.png");
-            bg->setContentSize({150.f, 20.f});
-            bg->setColor({255, 82, 96});
-            bg->setOpacity(235);
-            bg->setPosition({0.f, 0.f});
+            bg->setContentSize({210.f, 22.f});
+            bg->setColor({20, 20, 30});
+            bg->setOpacity(190);
             hud->addChild(bg);
 
             auto dot = CCDrawNode::create();
-            dot->drawDot({-62.f, 0.f}, 4.f, ccColor4F{1.f, 1.f, 1.f, 1.f});
+            dot->drawDot({-94.f, 0.f}, 4.f, ccColor4F{1.f, 0.3f, 0.35f, 1.f});
             hud->addChild(dot);
 
             auto label = CCLabelBMFont::create("REC 00:00", "chatFont.fnt");
-            label->setScale(0.6f);
-            label->setColor({255, 255, 255});
-            label->setPosition({8.f, 0.f});
+            label->setScale(0.65f);
+            label->setAnchorPoint({0.f, 0.5f});
+            label->setPosition({-84.f, 0.f});
             label->setTag(1);
             hud->addChild(label);
+
+            auto speed = CCLabelBMFont::create("1.0x lancar", "chatFont.fnt");
+            speed->setScale(0.65f);
+            speed->setAnchorPoint({1.f, 0.5f});
+            speed->setPosition({100.f, 0.f});
+            speed->setColor({90, 235, 140});
+            speed->setTag(2);
+            hud->addChild(speed);
 
             hud->setVisible(false);
             m_uiLayer->addChild(hud, 150);
         }
         return true;
+    }
+
+    void resetLevel() {
+        PlayLayer::resetLevel();
+        auto& r = RenderManager::get();
+        if (r.rendering) {
+            double off = m_levelSettings ? static_cast<double>(m_levelSettings->m_songOffset) : 0.0;
+            r.markSegment(off + m_gameState.m_levelTime);
+        }
     }
 
     void levelComplete() {
