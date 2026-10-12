@@ -1,3 +1,6 @@
+# v2.5.0
+- UI lebih bersih: satu tombol rekam besar di tengah; pengaturan, video, dan tentang di layar terpisah
+
 # v2.4.0
 - UI baru total: satu layar ala aplikasi kamera (tombol rekam bulat, pilihan cepat, saklar, video terakhir)
 - Audio: lagu di-decode lewat FMOD (mesin audio game) dulu, MediaCodec sebagai cadangan; alasan gagal lebih jelas

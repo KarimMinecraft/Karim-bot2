@@ -8,7 +8,7 @@
 	},
 	"id": "karim.karim-bot",
 	"name": "Rendering Utils",
-	"version": "v2.4.0",
+	"version": "v2.5.0",
 	"developer": "Karim",
 	"description": "Rekam gameplay Geometry Dash jadi video. Waktu game dikunci per frame supaya hasil mulus, pilih resolusi dan FPS, simpan otomatis saat level selesai.",
 	"tags": ["utility", "recording"]
