@@ -127,10 +127,12 @@ struct AacChunk {
 
 // Decode seluruh lagu jadi PCM 16-bit (maksimal maxSec detik)
 inline bool decodeSong(AuApi& a, std::string const& file, double maxSec,
-                       std::vector<int16_t>& pcm, int& rate, int& ch) {
+                       std::vector<int16_t>& pcm, int& rate, int& ch, std::string& err) {
     void* ex = a.exNew();
-    if (!ex) return false;
-    if (a.exSetSrc(ex, file.c_str()) != 0) {
+    if (!ex) { err = "extractor null"; return false; }
+    int32_t ss = a.exSetSrc(ex, file.c_str());
+    if (ss != 0) {
+        err = "extractor setDataSource=" + std::to_string(ss);
         a.exDelete(ex);
         return false;
     }
@@ -150,6 +152,7 @@ inline bool decodeSong(AuApi& a, std::string const& file, double maxSec,
         if (f) a.fmtDelete(f);
     }
     if (track < 0) {
+        err = "extractor: tidak ada track audio (" + std::to_string(n) + " track)";
         a.exDelete(ex);
         return false;
     }
@@ -163,13 +166,16 @@ inline bool decodeSong(AuApi& a, std::string const& file, double maxSec,
 
     void* dec = a.decCreate(mime.c_str());
     if (!dec) {
+        err = "decoder " + mime + " tidak ada";
         a.fmtDelete(fmt);
         a.exDelete(ex);
         return false;
     }
     int32_t st = a.configure(dec, fmt, nullptr, nullptr, 0);
     a.fmtDelete(fmt);
-    if (st != 0 || a.cStart(dec) != 0) {
+    int32_t st2 = (st == 0) ? a.cStart(dec) : -1;
+    if (st != 0 || st2 != 0) {
+        err = "decoder configure=" + std::to_string(st) + " start=" + std::to_string(st2);
         a.cDelete(dec);
         a.exDelete(ex);
         return false;
@@ -222,6 +228,7 @@ inline bool decodeSong(AuApi& a, std::string const& file, double maxSec,
     a.cDelete(dec);
     a.exDelete(ex);
     if (ch < 1) ch = 1;
+    if (pcm.empty()) err = "decoder tidak menghasilkan data";
     return !pcm.empty();
 }
 
@@ -309,20 +316,13 @@ inline bool encodeAac(AuApi& a, std::vector<int16_t> const& pcm, int rate, int c
     return outDone && outFormat && !out.empty();
 }
 
-inline bool addAudioImpl(std::string const& videoPath, std::string const& songFile,
+inline bool addAudioImpl(std::string const& videoPath, std::vector<int16_t>& pcm, int rate, int ch,
                          std::vector<AudioSeg> const& segs, double totalSec, std::string& err) {
     auto& a = AuApi::get();
     if (!a.ok) { err = "libmediandk tidak bisa dimuat"; return false; }
     if (segs.empty() || totalSec <= 0.0) { err = "tidak ada data musik"; return false; }
 
-    double maxSong = 0.0;
-    for (auto const& s : segs) maxSong = (std::max)(maxSong, s.songSec);
-    std::vector<int16_t> pcm;
-    int rate = 44100, ch = 2;
-    if (!decodeSong(a, songFile, maxSong + totalSec + 5.0, pcm, rate, ch)) {
-        err = "decode lagu gagal";
-        return false;
-    }
+    if (pcm.empty()) { err = "pcm kosong"; return false; }
 
     std::vector<AacChunk> chunks;
     void* aFmt = nullptr;
@@ -435,14 +435,27 @@ inline bool addAudioImpl(std::string const& videoPath, std::string const& songFi
     return true;
 }
 
-inline bool addAudio(std::string const& videoPath, std::string const& songFile,
+// Decode file lagu lewat MediaExtractor (cadangan kalau FMOD gagal)
+inline bool decodeFile(std::string const& songFile, double maxSec, std::vector<int16_t>& pcm,
+                       int& rate, int& ch, std::string& err) {
+    auto& a = AuApi::get();
+    if (!a.ok) { err = "libmediandk tidak bisa dimuat"; return false; }
+    return decodeSong(a, songFile, maxSec, pcm, rate, ch, err);
+}
+
+inline bool addAudio(std::string const& videoPath, std::vector<int16_t>& pcm, int rate, int ch,
                      std::vector<AudioSeg> const& segs, double totalSec, std::string& err) {
-    return addAudioImpl(videoPath, songFile, segs, totalSec, err);
+    return addAudioImpl(videoPath, pcm, rate, ch, segs, totalSec, err);
 }
 
 #else
 
-inline bool addAudio(std::string const&, std::string const&, std::vector<AudioSeg> const&, double, std::string& err) {
+inline bool decodeFile(std::string const&, double, std::vector<int16_t>&, int&, int&, std::string& err) {
+    err = "bukan Android";
+    return false;
+}
+
+inline bool addAudio(std::string const&, std::vector<int16_t>&, int, int, std::vector<AudioSeg> const&, double, std::string& err) {
     err = "bukan Android";
     return false;
 }

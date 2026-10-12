@@ -1,3 +1,8 @@
+# v2.4.0
+- UI baru total: satu layar ala aplikasi kamera (tombol rekam bulat, pilihan cepat, saklar, video terakhir)
+- Audio: lagu di-decode lewat FMOD (mesin audio game) dulu, MediaCodec sebagai cadangan; alasan gagal lebih jelas
+- Perbaikan tumpukan tombol di halaman Render
+
 # v2.3.1
 - Fix UI gelap: semua panel sekarang warna polos terang (tidak lagi memakai tekstur gelap game)
 - Tombol Render pindah ke pojok kiri atas pause menu

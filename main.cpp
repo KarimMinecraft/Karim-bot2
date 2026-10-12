@@ -113,8 +113,9 @@ class $modify(KBPlayLayer, PlayLayer) {
             hud->setTag(RenderManager::HUD_TAG);
             hud->setPosition({win.width / 2.f, 18.f});
 
-            auto bg = rui::box(210.f, 22.f, ccColor3B{20, 20, 30}, 190);
-            hud->addChild(bg);
+            auto bgd = CCDrawNode::create();
+            rui::fillRound(bgd, -105.f, -11.f, 210.f, 22.f, 11.f, ccColor3B{20, 20, 30});
+            hud->addChild(bgd);
 
             auto dot = CCDrawNode::create();
             dot->drawDot({-94.f, 0.f}, 4.f, ccColor4F{1.f, 0.3f, 0.35f, 1.f});
@@ -168,22 +169,17 @@ class $modify(KBPauseLayer, PauseLayer) {
         PauseLayer::customSetup();
 
         bool rec = RenderManager::get().rendering;
-        auto bg = rui::box(92.f, 28.f, rec ? ccColor3B{255, 82, 96} : ccColor3B{255, 214, 150});
-
         auto holder = CCNode::create();
-        holder->setContentSize({92.f, 28.f});
-        bg->setPosition({46.f, 14.f});
-        holder->addChild(bg);
-
-        if (!rec) {
-            auto dot = CCDrawNode::create();
-            dot->drawDot({14.f, 14.f}, 4.f, ccColor4F{1.f, 0.32f, 0.38f, 1.f});
-            holder->addChild(dot);
-        }
+        holder->setContentSize({96.f, 28.f});
+        auto d = CCDrawNode::create();
+        rui::fillRound(d, 0.f, 0.f, 96.f, 28.f, 14.f, rec ? rui::REC : rui::BLUE);
+        rui::fillRound(d, 2.f, 2.f, 92.f, 24.f, 12.f, rec ? rui::REC : rui::WHITE);
+        if (!rec) d->drawDot({15.f, 14.f}, 5.f, rui::f4(rui::REC));
+        holder->addChild(d);
         auto lbl = CCLabelBMFont::create(rec ? "STOP REC" : "Render", "bigFont.fnt");
-        lbl->limitLabelWidth(rec ? 76.f : 56.f, 0.5f, 0.1f);
-        lbl->setColor(rec ? ccColor3B{255, 255, 255} : ccColor3B{38, 32, 58});
-        lbl->setPosition({rec ? 46.f : 56.f, 14.f});
+        lbl->limitLabelWidth(rec ? 80.f : 58.f, 0.5f, 0.1f);
+        lbl->setColor(rec ? ccColor3B{255, 255, 255} : rui::TEXT);
+        lbl->setPosition({rec ? 48.f : 56.f, 15.f});
         holder->addChild(lbl);
 
         auto item = CCMenuItemExt::createSpriteExtra(holder, [this](CCMenuItemSpriteExtra*) {

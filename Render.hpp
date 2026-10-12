@@ -162,6 +162,81 @@ public:
         }
     }
 
+    // Decode lagu jadi PCM 16-bit memakai FMOD (mesin audio game sendiri)
+    static bool decodeWithFmod(std::string const& file, double maxSec, std::vector<int16_t>& pcm,
+                               int& rate, int& ch, std::string& err) {
+        auto* eng = FMODAudioEngine::get();
+        if (!eng || !eng->m_system) {
+            err = "FMOD belum siap";
+            return false;
+        }
+        FMOD::Sound* snd = nullptr;
+        FMOD_RESULT res = eng->m_system->createSound(file.c_str(), FMOD_OPENONLY | FMOD_ACCURATETIME, nullptr, &snd);
+        if (res != FMOD_OK || !snd) {
+            err = "FMOD createSound=" + std::to_string(static_cast<int>(res));
+            return false;
+        }
+        FMOD_SOUND_TYPE type = FMOD_SOUND_TYPE_UNKNOWN;
+        FMOD_SOUND_FORMAT fmt = FMOD_SOUND_FORMAT_NONE;
+        int channels = 0, bits = 0;
+        snd->getFormat(&type, &fmt, &channels, &bits);
+        float freq = 44100.f;
+        int prio = 0;
+        snd->getDefaults(&freq, &prio);
+        size_t bps = 0;
+        if (fmt == FMOD_SOUND_FORMAT_PCM16) bps = 2;
+        else if (fmt == FMOD_SOUND_FORMAT_PCMFLOAT) bps = 4;
+        else if (fmt == FMOD_SOUND_FORMAT_PCM32) bps = 4;
+        else if (fmt == FMOD_SOUND_FORMAT_PCM24) bps = 3;
+        else if (fmt == FMOD_SOUND_FORMAT_PCM8) bps = 1;
+        if (bps == 0 || channels < 1 || freq < 8000.f) {
+            err = "FMOD format " + std::to_string(static_cast<int>(fmt)) + " ch " + std::to_string(channels);
+            snd->release();
+            return false;
+        }
+        size_t maxBytes = static_cast<size_t>(maxSec * freq) * channels * bps;
+        std::vector<uint8_t> raw;
+        std::vector<uint8_t> chunk(65536);
+        while (raw.size() < maxBytes) {
+            unsigned int got = 0;
+            FMOD_RESULT rr = snd->readData(chunk.data(), static_cast<unsigned int>(chunk.size()), &got);
+            if (got > 0) raw.insert(raw.end(), chunk.begin(), chunk.begin() + got);
+            if (rr != FMOD_OK || got == 0) break;
+        }
+        snd->release();
+        if (raw.empty()) {
+            err = "FMOD tidak menghasilkan data";
+            return false;
+        }
+        size_t count = raw.size() / bps;
+        pcm.resize(count);
+        for (size_t i = 0; i < count; i++) {
+            uint8_t const* p = raw.data() + i * bps;
+            int v = 0;
+            if (fmt == FMOD_SOUND_FORMAT_PCM16) {
+                v = static_cast<int16_t>(p[0] | (p[1] << 8));
+            } else if (fmt == FMOD_SOUND_FORMAT_PCMFLOAT) {
+                float f;
+                std::memcpy(&f, p, 4);
+                int q = static_cast<int>(f * 32767.f);
+                v = q > 32767 ? 32767 : (q < -32768 ? -32768 : q);
+            } else if (fmt == FMOD_SOUND_FORMAT_PCM32) {
+                int32_t x;
+                std::memcpy(&x, p, 4);
+                v = x >> 16;
+            } else if (fmt == FMOD_SOUND_FORMAT_PCM24) {
+                int32_t x = (p[0] << 8) | (p[1] << 16) | (p[2] << 24);
+                v = x >> 16;
+            } else {
+                v = (static_cast<int>(p[0]) - 128) << 8;
+            }
+            pcm[i] = static_cast<int16_t>(v);
+        }
+        rate = static_cast<int>(freq);
+        ch = channels;
+        return true;
+    }
+
     // Siapkan file lagu level ini (file sementara). Mengembalikan "" kalau tidak ketemu.
     static inline std::string audioLog;   // catatan diagnosis audio
 
@@ -317,7 +392,25 @@ public:
             if (songFile.empty()) {
                 err = "file lagu tidak ditemukan";
             } else {
-                audioAdded = kbvid::addAudio(curPath, songFile, segs, secs, err);
+                double maxSong = 0.0;
+                for (auto const& sg : segs) maxSong = (std::max)(maxSong, sg.songSec);
+                double need = maxSong + secs + 5.0;
+                std::vector<int16_t> pcm;
+                int rate = 44100, ch = 2;
+                std::string e1, e2;
+                bool dec = decodeWithFmod(songFile, need, pcm, rate, ch, e1);
+                if (!dec) {
+                    audioLog += "FMOD decode gagal: " + e1 + "\n";
+                    pcm.clear();
+                    dec = kbvid::decodeFile(songFile, need, pcm, rate, ch, e2);
+                    if (!dec) audioLog += "MediaCodec decode gagal: " + e2 + "\n";
+                }
+                if (!dec) {
+                    err = "decode lagu gagal (" + e1 + " / " + e2 + ")";
+                } else {
+                    audioLog += "decode OK: " + std::to_string(pcm.size()) + " sampel, " + std::to_string(rate) + " Hz, " + std::to_string(ch) + " ch\n";
+                    audioAdded = kbvid::addAudio(curPath, pcm, rate, ch, segs, secs, err);
+                }
             }
             if (!audioAdded) {
                 audioLog += "GAGAL: " + err + "\n";
