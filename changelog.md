@@ -1,3 +1,7 @@
+# v3.0.0
+- UI kembali bergaya Karot Utils: tombol RU di pause menu membuka panel gelap di kiri, Opsi dan Video berupa popup GD biasa
+- Tidak lagi memakai bentuk gambar sendiri yang tampil kotak
+
 # v2.5.0
 - UI lebih bersih: satu tombol rekam besar di tengah; pengaturan, video, dan tentang di layar terpisah
 

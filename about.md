@@ -4,7 +4,7 @@ Rekam gameplay Geometry Dash menjadi file video, langsung dari dalam game.
 
 ## Cara pakai
 1. Masuk ke level, buka menu **Pause**.
-2. Tekan tombol **Render** (kiri bawah) untuk membuka **Render Studio**.
+2. Tekan tombol **RU** di kiri, lalu **Render** untuk membuka **Render Studio**.
 3. Atur resolusi, FPS, dan kualitas di tab **Opsi**.
 4. Tekan **MULAI RENDER**. Level dimulai ulang dan perekaman berjalan.
 5. Selesai level, video tersimpan otomatis. Atau pause lalu **STOP & SIMPAN**.

@@ -1,324 +1,376 @@
 #pragma once
+#include <Geode/ui/NineSlice.hpp>
+#include <Geode/ui/Notification.hpp>
 #include <Geode/utils/file.hpp>
 #include <functional>
 #include "Render.hpp"
 
 // ============================================================
-// RENDER STUDIO v4 - minimalis: satu tombol rekam besar di tengah,
-// pengaturan / video / tentang ada di layar terpisah.
-// Semua digambar sendiri (tanpa tekstur game), warna terang.
+// UI Rendering Utils - gaya sama seperti Karot Utils:
+//  - tombol kecil "RU" di pause menu -> panel gelap di sisi kiri
+//  - Opsi & Video = popup GD biasa dengan tombol hijau/biru/merah
 // ============================================================
-namespace rui {
-    inline ccColor3B const BG     = {236, 242, 255};
-    inline ccColor3B const WHITE  = {255, 255, 255};
-    inline ccColor3B const BLUE   = {58, 110, 255};
-    inline ccColor3B const SOFT   = {226, 233, 250};   // tombol tak terpilih
-    inline ccColor3B const REC    = {240, 64, 84};
-    inline ccColor3B const RECSOFT= {255, 226, 231};
-    inline ccColor3B const GREEN  = {24, 170, 120};
-    inline ccColor3B const AMBER  = {232, 150, 0};
-    inline ccColor3B const RED    = {232, 60, 70};
-    inline ccColor3B const TEXT   = {28, 36, 64};
-    inline ccColor3B const DIM    = {106, 118, 152};
+namespace kbui {
 
-    inline bool same(ccColor3B a, ccColor3B b) { return a.r == b.r && a.g == b.g && a.b == b.b; }
-    inline ccColor4F f4(ccColor3B c) { return ccColor4F{c.r / 255.f, c.g / 255.f, c.b / 255.f, 1.f}; }
-
-    inline void fillRect(CCDrawNode* d, float x, float y, float w, float h, ccColor3B c) {
-        CCPoint p[4] = {{x, y}, {x + w, y}, {x + w, y + h}, {x, y + h}};
-        d->drawPolygon(p, 4, f4(c), 0.f, f4(c));
-    }
-
-    // kotak dengan sudut membulat
-    inline void fillRound(CCDrawNode* d, float x, float y, float w, float h, float r, ccColor3B c) {
-        r = (std::min)(r, (std::min)(w, h) / 2.f);
-        fillRect(d, x + r, y, w - 2 * r, h, c);
-        fillRect(d, x, y + r, w, h - 2 * r, c);
-        d->drawDot({x + r, y + r}, r, f4(c));
-        d->drawDot({x + w - r, y + r}, r, f4(c));
-        d->drawDot({x + r, y + h - r}, r, f4(c));
-        d->drawDot({x + w - r, y + h - r}, r, f4(c));
-    }
-
-    inline CCLabelBMFont* label(CCNode* parent, std::string const& text, float x, float y, float scale,
-                                ccColor3B color, bool left = true, float maxW = 0.f, char const* font = "bigFont.fnt") {
-        auto l = CCLabelBMFont::create(text.c_str(), font);
-        if (maxW > 0.f) l->limitLabelWidth(maxW, scale, 0.1f);
-        else l->setScale(scale);
-        l->setColor(color);
-        l->setAnchorPoint({left ? 0.f : 0.5f, 0.5f});
-        l->setPosition({x, y});
-        parent->addChild(l, 3);
-        return l;
-    }
-
-    inline CCLabelBMFont* body(CCNode* parent, std::string const& text, float x, float y, ccColor3B color = TEXT,
-                               float scale = 0.72f, bool left = true, float maxW = 0.f) {
-        return label(parent, text, x, y, scale, color, left, maxW, "chatFont.fnt");
-    }
-
-    // tombol pil dengan teks
-    inline CCNode* pill(std::string const& text, float w, float h, ccColor3B fill, ccColor3B textColor, float ts = 0.4f) {
+    // Tombol buatan sendiri: ukuran & teks seimbang.
+    // bg: "GJ_button_01.png" (hijau), "GJ_button_02.png" (biru), "GJ_button_04.png" (abu), "GJ_button_06.png" (merah)
+    inline CCNode* buttonNode(char const* text, float w, float h, char const* bg, float textScale = 0.55f) {
         auto node = CCNode::create();
         node->setContentSize({w, h});
-        auto d = CCDrawNode::create();
-        fillRound(d, 0.f, 0.f, w, h, h / 2.f, fill);
-        node->addChild(d, 0);
-        auto l = CCLabelBMFont::create(text.c_str(), "bigFont.fnt");
-        l->setColor(textColor);
-        l->limitLabelWidth(w - 10.f, ts, 0.12f);
-        l->setPosition({w / 2, h / 2 + 1.f});
-        node->addChild(l, 1);
+        auto spr = NineSlice::create(bg, CCRect{0.f, 0.f, 40.f, 40.f}, NineSlice::Insets{12.f, 12.f, 12.f, 12.f});
+        if (spr) {
+            spr->setContentSize({w, h});
+            spr->setPosition({w / 2, h / 2});
+            node->addChild(spr, 0);
+        }
+        auto label = CCLabelBMFont::create(text, "goldFont.fnt");
+        label->limitLabelWidth(w - 12.f, textScale, 0.2f);
+        label->setPosition({w / 2, h / 2 + 1.f});
+        node->addChild(label, 1);
         return node;
     }
 
-    // saklar ON/OFF
-    inline CCNode* toggle(bool on) {
-        auto node = CCNode::create();
-        node->setContentSize({36.f, 18.f});
-        auto d = CCDrawNode::create();
-        fillRound(d, 0.f, 0.f, 36.f, 18.f, 9.f, on ? GREEN : ccColor3B{196, 204, 224});
-        d->drawDot({on ? 27.f : 9.f, 9.f}, 7.f, f4(WHITE));
-        node->addChild(d, 0);
-        return node;
+    // Pil/kapsul gelap
+    inline NineSlice* pill(float w, float h, ccColor3B color, GLubyte opacity) {
+        auto bg = NineSlice::create("square02_001.png");
+        bg->setContentSize({w, h});
+        bg->setColor(color);
+        bg->setOpacity(opacity);
+        return bg;
+    }
+
+    // Lingkaran penuh (polygon, karena drawDot di game ini tampil sebagai kotak)
+    inline void circle(CCDrawNode* d, float cx, float cy, float r, ccColor4F c) {
+        constexpr int N = 28;
+        CCPoint p[N];
+        for (int i = 0; i < N; i++) {
+            float a = static_cast<float>(i) * 6.2831853f / static_cast<float>(N);
+            p[i] = CCPoint{cx + r * std::cos(a), cy + r * std::sin(a)};
+        }
+        d->drawPolygon(p, N, c, 0.f, c);
+    }
+
+    inline CCLabelBMFont* text(CCNode* parent, std::string const& s, float x, float y, float maxW, float scale,
+                               char const* font = "bigFont.fnt", bool left = true, ccColor3B color = {255, 255, 255}) {
+        auto l = CCLabelBMFont::create(s.c_str(), font);
+        l->limitLabelWidth(maxW, scale, 0.15f);
+        l->setAnchorPoint({left ? 0.f : 0.5f, 0.5f});
+        l->setColor(color);
+        l->setPosition({x, y});
+        parent->addChild(l, 2);
+        return l;
     }
 }
 
-class RenderStudio : public geode::Popup {
+// ============================================================
+// Popup Opsi
+// ============================================================
+class RenderOptionsPopup : public geode::Popup {
 protected:
-    static constexpr float PW = 360.f;
-    static constexpr float PH = 300.f;
-    enum class Page { Main, Settings, Videos, Info };
+    CCNode* m_page = nullptr;
 
-    PauseLayer* m_pause = nullptr;
-    CCNode* m_root = nullptr;
-    CCMenu* m_menu = nullptr;
-    Page m_page = Page::Main;
-
-    bool init(PauseLayer* pause) {
-        if (!Popup::init(PW, PH)) return false;
-        m_pause = pause;
-        this->setOpacity(70);
-        if (m_bgSprite) m_bgSprite->setVisible(false);
-
-        auto d = CCDrawNode::create();
-        rui::fillRound(d, 0.f, 0.f, PW, PH, 22.f, ccColor3B{206, 218, 246});
-        rui::fillRound(d, 2.f, 2.f, PW - 4.f, PH - 4.f, 20.f, rui::WHITE);
-        m_mainLayer->addChild(d, -1);
-
+    bool init() {
+        if (!Popup::init(340.f, 232.f)) return false;
+        this->setTitle("Opsi Render");
         this->build();
         return true;
     }
 
-    CCMenuItemSpriteExtra* addItem(CCNode* node, float x, float y, std::function<void()> cb) {
-        auto btn = CCMenuItemExt::createSpriteExtra(node, [cb](CCObject*) { cb(); });
-        btn->setPosition({x, y});
-        m_menu->addChild(btn);
-        return btn;
-    }
-
-    CCMenuItemSpriteExtra* addPill(std::string const& text, float cx, float cy, float w, float h,
-                                   ccColor3B fill, ccColor3B tc, std::function<void()> cb, float ts = 0.4f) {
-        return addItem(rui::pill(text, w, h, fill, tc, ts), cx, cy, cb);
-    }
-
-    static ccColor3B speedColor(double sp) {
-        return sp >= 0.9 ? rui::GREEN : (sp >= 0.6 ? rui::AMBER : rui::RED);
-    }
-    static char const* speedText(double sp) {
-        return sp >= 0.9 ? "lancar" : (sp >= 0.6 ? "agak lag" : "lag");
-    }
-
-    void go(Page p) {
-        m_page = p;
-        this->refresh();
-    }
-
-    // dijalankan di frame berikutnya supaya tombol yang sedang ditekan tidak dihapus saat masih aktif
     void refresh() {
-        geode::Loader::get()->queueInMainThread([self = geode::Ref<RenderStudio>(this)]() { self->build(); });
+        geode::Loader::get()->queueInMainThread([self = geode::Ref<RenderOptionsPopup>(this)]() { self->build(); });
     }
 
     void build() {
-        if (m_root) m_root->removeFromParent();
-        m_root = CCNode::create();
-        m_mainLayer->addChild(m_root, 4);
-        auto shapes = CCDrawNode::create();
-        m_root->addChild(shapes, 0);
-        m_menu = CCMenu::create();
-        m_menu->setPosition({0.f, 0.f});
-        m_root->addChild(m_menu, 10);
+        if (m_page) m_page->removeFromParent();
+        m_page = CCNode::create();
+        m_mainLayer->addChild(m_page, 5);
+        auto menu = CCMenu::create();
+        menu->setPosition({0.f, 0.f});
+        m_page->addChild(menu, 5);
 
-        switch (m_page) {
-            case Page::Main: buildMain(); break;
-            case Page::Settings: buildSettings(shapes); break;
-            case Page::Videos: buildVideos(shapes); break;
-            default: buildInfo(); break;
-        }
-    }
+        float W = m_size.width;
 
-    // judul + tombol kembali untuk layar selain utama
-    void header(char const* title) {
-        addPill("< Kembali", 56.f, PH - 26.f, 82.f, 24.f, rui::SOFT, rui::TEXT,
-                [this]() { this->go(Page::Main); }, 0.34f);
-        rui::label(m_root, title, PW / 2 + 30.f, PH - 26.f, 0.48f, rui::TEXT, false);
-    }
-
-    // ---------- layar utama ----------
-    void buildMain() {
-        auto& r = RenderManager::get();
-        rui::label(m_root, "Rendering Utils", PW / 2, PH - 30.f, 0.55f, rui::TEXT, false);
-        std::string sum = std::to_string(RenderManager::heightP()) + "p  -  " +
-                          std::to_string(RenderManager::fps()) + " FPS  -  " +
-                          (RenderManager::audio() ? "dengan suara" : "tanpa suara");
-        rui::body(m_root, sum, PW / 2, PH - 52.f, rui::DIM, 0.8f, false);
-
-        // tombol rekam besar
-        auto node = CCNode::create();
-        node->setContentSize({116.f, 116.f});
-        auto d = CCDrawNode::create();
-        d->drawDot({58.f, 58.f}, 56.f, rui::f4(rui::RECSOFT));
-        d->drawDot({58.f, 58.f}, 44.f, rui::f4(rui::REC));
-        if (r.rendering) rui::fillRound(d, 58.f - 15.f, 58.f - 15.f, 30.f, 30.f, 7.f, rui::WHITE);
-        else d->drawDot({58.f, 58.f}, 16.f, rui::f4(rui::WHITE));
-        node->addChild(d);
-        addItem(node, PW / 2, 150.f, [this]() { this->onRecordButton(); });
-
-        // status
-        if (r.rendering) {
-            int secs = r.frames / (std::max)(1, RenderManager::fps());
-            char buf[96];
-            std::snprintf(buf, sizeof(buf), "REC %02d:%02d   %.1fx %s", secs / 60, secs % 60, r.speedX, speedText(r.speedX));
-            rui::label(m_root, buf, PW / 2, 78.f, 0.42f, speedColor(r.speedX), false);
-            rui::body(m_root, "Ketuk tombol untuk berhenti dan simpan", PW / 2, 58.f, rui::DIM, 0.75f, false);
-        } else {
-            rui::label(m_root, "Siap merekam", PW / 2, 78.f, 0.42f, rui::TEXT, false);
-            rui::body(m_root, "Ketuk tombol merah untuk mulai", PW / 2, 58.f, rui::DIM, 0.75f, false);
-        }
-
-        addPill("Video", PW / 2 - 70.f, 26.f, 116.f, 28.f, rui::SOFT, rui::TEXT, [this]() { this->go(Page::Videos); }, 0.4f);
-        addPill("Pengaturan", PW / 2 + 70.f, 26.f, 116.f, 28.f, rui::SOFT, rui::TEXT, [this]() { this->go(Page::Settings); }, 0.36f);
-    }
-
-    // ---------- layar pengaturan ----------
-    void buildSettings(CCDrawNode* shapes) {
-        this->header("Pengaturan");
-
-        float left = 28.f, right = PW - 28.f;
-        float y = PH - 68.f;
-        float step = 34.f;
-
-        auto divider = [&](float yy) { rui::fillRect(shapes, left, yy, right - left, 1.f, ccColor3B{236, 240, 250}); };
-
-        auto segRow = [&](char const* title, std::vector<std::pair<std::string, int>> const& items,
-                          int current, std::function<void(int)> set) {
-            rui::label(m_root, title, left, y, 0.42f, rui::TEXT);
-            float w = 48.f, gap = 4.f;
-            float x = right - static_cast<float>(items.size()) * (w + gap) + gap;
+        auto chipRow = [&](char const* title, float y, std::vector<std::pair<std::string, int>> const& items,
+                           int current, std::function<void(int)> set) {
+            kbui::text(m_page, title, 18.f, y, 70.f, 0.5f);
+            float w = 50.f, gap = 4.f;
+            float x = W - 16.f - static_cast<float>(items.size()) * (w + gap) + gap;
             for (auto const& it : items) {
                 bool sel = (it.second == current);
                 int val = it.second;
-                addPill(it.first, x + w / 2, y, w, 24.f, sel ? rui::BLUE : rui::SOFT, sel ? rui::WHITE : rui::TEXT,
-                        [this, set, val]() { set(val); this->refresh(); }, 0.34f);
+                auto b = CCMenuItemExt::createSpriteExtra(
+                    kbui::buttonNode(it.first.c_str(), w, 26.f, sel ? "GJ_button_01.png" : "GJ_button_04.png", 0.5f),
+                    [this, set, val](CCObject*) { set(val); this->refresh(); });
+                b->setPosition({x + w / 2, y});
+                menu->addChild(b);
                 x += w + gap;
             }
-            y -= step;
-            divider(y + step / 2);
         };
-        segRow("Resolusi", {{"360p", 360}, {"480p", 480}, {"720p", 720}, {"1080p", 1080}},
-               RenderManager::heightP(), [](int v) { RenderManager::setHeightP(v); });
-        segRow("FPS", {{"24", 24}, {"30", 30}, {"60", 60}},
-               RenderManager::fps(), [](int v) { RenderManager::setFps(v); });
+        chipRow("Resolusi", 176.f, {{"360p", 360}, {"480p", 480}, {"720p", 720}, {"1080p", 1080}},
+                RenderManager::heightP(), [](int v) { RenderManager::setHeightP(v); });
+        chipRow("FPS", 144.f, {{"24", 24}, {"30", 30}, {"60", 60}},
+                RenderManager::fps(), [](int v) { RenderManager::setFps(v); });
 
         // kualitas
-        rui::label(m_root, "Kualitas", left, y, 0.42f, rui::TEXT);
-        addPill("-", right - 92.f, y, 28.f, 24.f, rui::SOFT, rui::TEXT,
-                [this]() { RenderManager::setQuality(RenderManager::quality() - 5); this->refresh(); }, 0.5f);
-        rui::label(m_root, std::to_string(RenderManager::quality()), right - 46.f, y, 0.42f, rui::TEXT, false);
-        addPill("+", right - 14.f, y, 28.f, 24.f, rui::SOFT, rui::TEXT,
-                [this]() { RenderManager::setQuality(RenderManager::quality() + 5); this->refresh(); }, 0.5f);
-        y -= step;
-        divider(y + step / 2);
+        {
+            float y = 112.f;
+            kbui::text(m_page, "Kualitas", 18.f, y, 70.f, 0.5f);
+            auto minus = CCMenuItemExt::createSpriteExtra(kbui::buttonNode("-", 34.f, 26.f, "GJ_button_04.png", 0.7f),
+                [this](CCObject*) { RenderManager::setQuality(RenderManager::quality() - 5); this->refresh(); });
+            minus->setPosition({W - 108.f, y});
+            menu->addChild(minus);
+            kbui::text(m_page, std::to_string(RenderManager::quality()), W - 66.f, y, 40.f, 0.55f, "bigFont.fnt", false);
+            auto plus = CCMenuItemExt::createSpriteExtra(kbui::buttonNode("+", 34.f, 26.f, "GJ_button_04.png", 0.7f),
+                [this](CCObject*) { RenderManager::setQuality(RenderManager::quality() + 5); this->refresh(); });
+            plus->setPosition({W - 33.f, y});
+            menu->addChild(plus);
+        }
 
-        auto sw = [&](char const* title, bool value, std::function<void(bool)> onChange) {
-            rui::label(m_root, title, left, y, 0.4f, rui::TEXT, true, 200.f);
-            addItem(rui::toggle(value), right - 18.f, y, [this, onChange, value]() { onChange(!value); this->refresh(); });
-            y -= step;
-            divider(y + step / 2);
+        auto sw = [&](char const* title, float x, float y, bool value, std::function<void(bool)> onChange) {
+            auto t = CCMenuItemExt::createTogglerWithStandardSprites(0.6f, [onChange](CCMenuItemToggler* tg) {
+                onChange(!tg->isToggled());   // callback jalan sebelum state berubah
+            });
+            t->toggle(value);
+            t->setPosition({x, y});
+            menu->addChild(t);
+            kbui::text(m_page, title, x + 18.f, y, 112.f, 0.42f);
         };
-        sw("Rekam suara (musik level)", RenderManager::audio(), [](bool v) { RenderManager::setAudio(v); });
-        sw("Stop saat level selesai", RenderManager::autoStop(), [](bool v) { RenderManager::setAutoStop(v); });
-        sw("Tampilkan hitbox", RenderManager::hitboxes(), [](bool v) { RenderManager::setHitboxes(v); });
-        sw("Indikator REC di layar", RenderManager::showHud(), [](bool v) { RenderManager::setShowHud(v); });
-
-        addPill("Tentang mod", PW / 2, 24.f, 130.f, 26.f, rui::SOFT, rui::DIM, [this]() { this->go(Page::Info); }, 0.34f);
+        sw("Rekam suara", 30.f, 74.f, RenderManager::audio(), [](bool v) { RenderManager::setAudio(v); });
+        sw("Stop otomatis", 182.f, 74.f, RenderManager::autoStop(), [](bool v) { RenderManager::setAutoStop(v); });
+        sw("Tampil hitbox", 30.f, 40.f, RenderManager::hitboxes(), [](bool v) { RenderManager::setHitboxes(v); });
+        sw("Indikator REC", 182.f, 40.f, RenderManager::showHud(), [](bool v) { RenderManager::setShowHud(v); });
     }
 
-    // ---------- layar video ----------
-    void buildVideos(CCDrawNode* shapes) {
-        this->header("Video");
+public:
+    static RenderOptionsPopup* create() {
+        auto ret = new RenderOptionsPopup();
+        if (ret->init()) {
+            ret->autorelease();
+            return ret;
+        }
+        delete ret;
+        return nullptr;
+    }
+};
+
+// ============================================================
+// Popup Video hasil render
+// ============================================================
+class RenderVideosPopup : public geode::Popup {
+protected:
+    CCNode* m_page = nullptr;
+
+    bool init() {
+        if (!Popup::init(350.f, 232.f)) return false;
+        this->setTitle("Video Hasil");
+        this->build();
+        return true;
+    }
+
+    void refresh() {
+        geode::Loader::get()->queueInMainThread([self = geode::Ref<RenderVideosPopup>(this)]() { self->build(); });
+    }
+
+    void build() {
+        if (m_page) m_page->removeFromParent();
+        m_page = CCNode::create();
+        m_mainLayer->addChild(m_page, 5);
+        auto menu = CCMenu::create();
+        menu->setPosition({0.f, 0.f});
+        m_page->addChild(menu, 5);
+
+        float W = m_size.width;
         auto list = RenderManager::files();
         if (list.empty()) {
-            rui::label(m_root, "Belum ada video", PW / 2, PH / 2 + 20.f, 0.5f, rui::TEXT, false);
-            rui::body(m_root, "Rekam dulu lewat tombol merah", PW / 2, PH / 2 - 2.f, rui::DIM, 0.8f, false);
+            kbui::text(m_page, "Belum ada video.", W / 2, 130.f, 280.f, 0.5f, "bigFont.fnt", false);
+            kbui::text(m_page, "Tekan Render di panel pause untuk mulai.", W / 2, 106.f, 300.f, 0.6f, "chatFont.fnt", false, {165, 178, 215});
         }
         size_t shown = (std::min)(list.size(), static_cast<size_t>(4));
+        float rowH = 36.f;
         for (size_t i = 0; i < shown; i++) {
-            float y = PH - 84.f - static_cast<float>(i) * 48.f;
-            rui::fillRect(shapes, 28.f, y - 24.f, PW - 56.f, 1.f, ccColor3B{236, 240, 250});
+            float y = 178.f - static_cast<float>(i) * (rowH + 4.f);
+            auto bg = kbui::pill(W - 30.f, rowH, {0, 0, 0}, 120);
+            bg->setPosition({W / 2, y});
+            m_page->addChild(bg, 1);
+
             auto path = list[i];
-            rui::label(m_root, path.filename().string(), 28.f, y + 8.f, 0.36f, rui::TEXT, true, 190.f);
-            rui::body(m_root, RenderManager::sizeText(path), 28.f, y - 10.f, rui::GREEN, 0.8f);
-            addPill("BUKA", PW - 128.f, y, 56.f, 26.f, rui::BLUE, rui::WHITE, [path]() {
-                if (!geode::utils::file::openFolder(path)) geode::utils::file::openFolder(RenderManager::dir());
-            }, 0.34f);
-            addPill("HAPUS", PW - 62.f, y, 62.f, 26.f, rui::RECSOFT, rui::REC, [this, path]() {
-                std::error_code ec;
-                std::filesystem::remove(path, ec);
-                this->refresh();
-            }, 0.34f);
+            kbui::text(m_page, path.filename().string(), 24.f, y + 7.f, 150.f, 0.42f);
+            kbui::text(m_page, RenderManager::sizeText(path), 24.f, y - 9.f, 100.f, 0.62f, "chatFont.fnt", true, {150, 200, 255});
+
+            auto open = CCMenuItemExt::createSpriteExtra(kbui::buttonNode("Buka", 56.f, 26.f, "GJ_button_01.png", 0.5f),
+                [path](CCObject*) {
+                    if (!geode::utils::file::openFolder(path)) geode::utils::file::openFolder(RenderManager::dir());
+                });
+            open->setPosition({W - 108.f, y});
+            menu->addChild(open);
+            auto del = CCMenuItemExt::createSpriteExtra(kbui::buttonNode("Hapus", 56.f, 26.f, "GJ_button_06.png", 0.5f),
+                [this, path](CCObject*) {
+                    std::error_code ec;
+                    std::filesystem::remove(path, ec);
+                    this->refresh();
+                });
+            del->setPosition({W - 48.f, y});
+            menu->addChild(del);
         }
-        addPill("Buka folder video", PW / 2, 26.f, 170.f, 28.f, rui::GREEN, rui::WHITE, []() {
-            if (!geode::utils::file::openFolder(RenderManager::dir())) {
-                Notification::create("Tidak bisa membuka folder", NotificationIcon::Warning)->show();
-            }
-        }, 0.36f);
+
+        auto folder = CCMenuItemExt::createSpriteExtra(kbui::buttonNode("Buka Folder", 150.f, 28.f, "GJ_button_02.png", 0.55f),
+            [](CCObject*) {
+                if (!geode::utils::file::openFolder(RenderManager::dir())) {
+                    Notification::create("Tidak bisa membuka folder", NotificationIcon::Warning)->show();
+                }
+            });
+        folder->setPosition({W / 2, 22.f});
+        menu->addChild(folder);
     }
 
-    // ---------- layar tentang ----------
-    void buildInfo() {
-        this->header("Tentang");
-        char const* lines[] = {
-            "Rendering Utils v2.5",
-            "",
-            "Rekam gameplay Geometry Dash jadi",
-            "video MP4 langsung dari dalam game.",
-            "",
-            "- Ketuk tombol merah: level diulang dari",
-            "  awal dan direkam otomatis.",
-            "- Level selesai = video langsung tersimpan.",
-            "- Musik level ikut direkam.",
-            "- HP lag? Game melambat otomatis supaya",
-            "  video tetap mulus.",
-            "- Berhenti di tengah: Pause > Render."
-        };
-        float y = PH - 70.f;
-        bool first = true;
-        for (auto const* ln : lines) {
-            if (ln[0] != '\0') {
-                if (first) rui::label(m_root, ln, 28.f, y, 0.42f, rui::BLUE);
-                else rui::body(m_root, ln, 28.f, y, rui::TEXT, 0.78f, true, PW - 56.f);
-            }
-            first = false;
-            y -= 17.f;
+public:
+    static RenderVideosPopup* create() {
+        auto ret = new RenderVideosPopup();
+        if (ret->init()) {
+            ret->autorelease();
+            return ret;
+        }
+        delete ret;
+        return nullptr;
+    }
+};
+
+// ============================================================
+// Panel di PAUSE MENU (sisi kiri). Awalnya hanya tombol kecil "RU".
+// ============================================================
+class RenderPanel : public CCNode {
+protected:
+    static constexpr float PW = 148.f;
+    static constexpr float PH = 190.f;
+
+    PauseLayer* m_pause = nullptr;
+    CCNode* m_body = nullptr;
+    bool m_open = false;
+
+    bool setup(PauseLayer* pause) {
+        if (!CCNode::init()) return false;
+        m_pause = pause;
+        auto& r = RenderManager::get();
+        bool rec = r.rendering;
+
+        this->setContentSize({PW, PH + 30.f});
+
+        m_body = CCNode::create();
+        m_body->ignoreAnchorPointForPosition(false);
+        m_body->setContentSize({PW, PH});
+        m_body->setAnchorPoint({0.f, 1.f});
+        m_body->setPosition({0.f, PH});
+        m_body->setVisible(false);
+        m_body->setScale(0.01f);
+        this->addChild(m_body, 1);
+
+        auto bg = kbui::pill(PW, PH, {14, 18, 40}, 235);
+        bg->setPosition({PW / 2, PH / 2});
+        m_body->addChild(bg, 0);
+
+        auto title = CCLabelBMFont::create("Rendering Utils", "goldFont.fnt");
+        title->limitLabelWidth(PW - 20.f, 0.55f, 0.3f);
+        title->setPosition({PW / 2, PH - 18.f});
+        m_body->addChild(title, 2);
+
+        auto line = CCLayerColor::create({255, 205, 90, 170}, PW - 28.f, 1.5f);
+        line->setPosition({14.f, PH - 33.f});
+        m_body->addChild(line, 2);
+
+        // status
+        ccColor3B pillColor = rec ? ccColor3B{150, 30, 40} : ccColor3B{55, 60, 90};
+        auto st = kbui::pill(PW - 26.f, 19.f, pillColor, 230);
+        st->setPosition({PW / 2, PH - 51.f});
+        m_body->addChild(st, 1);
+        std::string statusText = "IDLE";
+        if (rec) {
+            int secs = r.frames / (std::max)(1, RenderManager::fps());
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "REC %02d:%02d", secs / 60, secs % 60);
+            statusText = buf;
+        }
+        kbui::text(m_body, statusText, PW / 2, PH - 51.f, PW - 36.f, 0.36f, "bigFont.fnt", false);
+
+        std::string infoText;
+        ccColor3B infoColor = {165, 178, 215};
+        if (rec) {
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "%.1fx %s", r.speedX, r.speedX >= 0.9 ? "lancar" : (r.speedX >= 0.6 ? "agak lag" : "lag"));
+            infoText = buf;
+            infoColor = r.speedX >= 0.9 ? ccColor3B{110, 235, 150} : (r.speedX >= 0.6 ? ccColor3B{255, 214, 90} : ccColor3B{255, 120, 120});
+        } else {
+            infoText = std::to_string(RenderManager::heightP()) + "p  " + std::to_string(RenderManager::fps()) + " fps";
+        }
+        kbui::text(m_body, infoText, PW / 2, PH - 70.f, PW - 24.f, 0.65f, "chatFont.fnt", false, infoColor);
+
+        // tombol
+        const float bw = 124.f, bh = 28.f;
+        auto menu = CCMenu::create();
+        menu->setPosition({0, 0});
+        menu->setContentSize({PW, PH});
+        m_body->addChild(menu, 5);
+
+        auto recBtn = CCMenuItemExt::createSpriteExtra(
+            kbui::buttonNode(rec ? "Stop" : "Render", bw, bh, rec ? "GJ_button_04.png" : "GJ_button_06.png", 0.62f),
+            [this](CCObject*) { this->onRecord(); });
+        recBtn->setPosition({PW / 2, 100.f});
+        menu->addChild(recBtn);
+
+        const float hw = 62.f;
+        auto vidBtn = CCMenuItemExt::createSpriteExtra(
+            kbui::buttonNode("Video", hw, bh, "GJ_button_01.png", 0.6f),
+            [](CCObject*) { RenderVideosPopup::create()->show(); });
+        vidBtn->setPosition({PW / 2 - hw / 2 - 2.f, 64.f});
+        menu->addChild(vidBtn);
+
+        auto optBtn = CCMenuItemExt::createSpriteExtra(
+            kbui::buttonNode("Opsi", hw, bh, "GJ_button_02.png", 0.6f),
+            [](CCObject*) { RenderOptionsPopup::create()->show(); });
+        optBtn->setPosition({PW / 2 + hw / 2 + 2.f, 64.f});
+        menu->addChild(optBtn);
+
+        auto sep = CCLayerColor::create({255, 255, 255, 45}, PW - 28.f, 1.f);
+        sep->setPosition({14.f, 42.f});
+        m_body->addChild(sep, 2);
+
+        auto snd = CCMenuItemExt::createTogglerWithStandardSprites(0.55f, [](CCMenuItemToggler* t) {
+            RenderManager::setAudio(!t->isToggled());
+        });
+        snd->toggle(RenderManager::audio());
+        snd->setPosition({26.f, 22.f});
+        menu->addChild(snd);
+        kbui::text(m_body, "Rekam suara", 44.f, 22.f, PW - 56.f, 0.36f);
+
+        // tombol kecil "RU"
+        auto toggleMenu = CCMenu::create();
+        toggleMenu->setPosition({0, 0});
+        toggleMenu->setContentSize({PW, PH + 30.f});
+        this->addChild(toggleMenu, 10);
+
+        auto toggleBtn = CCMenuItemExt::createSpriteExtra(
+            kbui::buttonNode("RU", 40.f, 26.f, rec ? "GJ_button_06.png" : "GJ_button_02.png", 0.6f),
+            [this](CCObject*) { this->togglePanel(); });
+        toggleBtn->setPosition({20.f, PH + 14.f});
+        toggleMenu->addChild(toggleBtn);
+        return true;
+    }
+
+    void togglePanel() {
+        m_open = !m_open;
+        m_body->stopAllActions();
+        if (m_open) {
+            m_body->setVisible(true);
+            m_body->runAction(CCEaseBackOut::create(CCScaleTo::create(0.22f, 1.f)));
+        } else {
+            m_body->runAction(CCSequence::create(CCScaleTo::create(0.12f, 0.01f), CCHide::create(), nullptr));
         }
     }
 
-    void onRecordButton() {
+    void onRecord() {
         auto& r = RenderManager::get();
         if (r.rendering) {
             r.stop(true);
-            this->refresh();
+            m_pause->onResume(nullptr);
             return;
         }
         auto* pl = PlayLayer::get();
@@ -331,15 +383,13 @@ protected:
             return;
         }
         Notification::create("Render dimulai", NotificationIcon::Success)->show();
-        auto* pause = m_pause;
-        this->onClose(nullptr);
-        if (pause) pause->onRestartFull(nullptr);
+        m_pause->onRestartFull(nullptr);
     }
 
 public:
-    static RenderStudio* create(PauseLayer* pause) {
-        auto ret = new RenderStudio();
-        if (ret->init(pause)) {
+    static RenderPanel* create(PauseLayer* pause) {
+        auto ret = new RenderPanel();
+        if (ret->setup(pause)) {
             ret->autorelease();
             return ret;
         }

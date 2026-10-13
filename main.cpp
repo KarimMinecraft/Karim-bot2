@@ -113,12 +113,11 @@ class $modify(KBPlayLayer, PlayLayer) {
             hud->setTag(RenderManager::HUD_TAG);
             hud->setPosition({win.width / 2.f, 18.f});
 
-            auto bgd = CCDrawNode::create();
-            rui::fillRound(bgd, -105.f, -11.f, 210.f, 22.f, 11.f, ccColor3B{20, 20, 30});
-            hud->addChild(bgd);
+            auto bgp = kbui::pill(210.f, 22.f, ccColor3B{14, 18, 40}, 215);
+            hud->addChild(bgp);
 
             auto dot = CCDrawNode::create();
-            dot->drawDot({-94.f, 0.f}, 4.f, ccColor4F{1.f, 0.3f, 0.35f, 1.f});
+            kbui::circle(dot, -94.f, 0.f, 4.f, ccColor4F{1.f, 0.3f, 0.35f, 1.f});
             hud->addChild(dot);
 
             auto label = CCLabelBMFont::create("REC 00:00", "chatFont.fnt");
@@ -167,29 +166,12 @@ class $modify(KBPlayLayer, PlayLayer) {
 class $modify(KBPauseLayer, PauseLayer) {
     void customSetup() {
         PauseLayer::customSetup();
-
-        bool rec = RenderManager::get().rendering;
-        auto holder = CCNode::create();
-        holder->setContentSize({96.f, 28.f});
-        auto d = CCDrawNode::create();
-        rui::fillRound(d, 0.f, 0.f, 96.f, 28.f, 14.f, rec ? rui::REC : rui::BLUE);
-        rui::fillRound(d, 2.f, 2.f, 92.f, 24.f, 12.f, rec ? rui::REC : rui::WHITE);
-        if (!rec) d->drawDot({15.f, 14.f}, 5.f, rui::f4(rui::REC));
-        holder->addChild(d);
-        auto lbl = CCLabelBMFont::create(rec ? "STOP REC" : "Render", "bigFont.fnt");
-        lbl->limitLabelWidth(rec ? 80.f : 58.f, 0.5f, 0.1f);
-        lbl->setColor(rec ? ccColor3B{255, 255, 255} : rui::TEXT);
-        lbl->setPosition({rec ? 48.f : 56.f, 15.f});
-        holder->addChild(lbl);
-
-        auto item = CCMenuItemExt::createSpriteExtra(holder, [this](CCMenuItemSpriteExtra*) {
-            RenderStudio::create(this)->show();
-        });
-        auto menu = CCMenu::create();
-        menu->setPosition({0.f, 0.f});
-        auto winSz = CCDirector::get()->getWinSize();
-        item->setPosition({62.f, winSz.height - 24.f});   // pojok kiri atas
-        menu->addChild(item);
-        this->addChild(menu, 100);
+        auto panel = RenderPanel::create(this);
+        if (!panel) return;
+        float x = 14.f;
+        float y = 52.f;
+        panel->setPosition({x - 40.f, y});
+        this->addChild(panel, 100);
+        panel->runAction(CCEaseExponentialOut::create(CCMoveTo::create(0.3f, {x, y})));
     }
 };
